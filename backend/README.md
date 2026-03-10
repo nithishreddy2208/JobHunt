@@ -12,7 +12,6 @@ The goal of this project is to build a scalable job portal that simplifies the r
 
 ### Frontend
 - React.js
-- Tailwind CSS
 - Axios
 
 ### Backend
@@ -85,7 +84,7 @@ backend
 ├── utils
 │
 ├── .env
-├── server.js
+├── index.js
 └── package.json
 ```
 
@@ -96,7 +95,7 @@ backend
 ### 1️⃣ Clone the repository
 
 ```bash
-git clone https://github.com/your-username/jobhunt.git
+git clone https://github.com/nithishreddy2208/jobhunt.git
 ```
 
 ### 2️⃣ Navigate to the project folder
@@ -142,7 +141,3 @@ npm run dev
 **Nithish Reddy**
 
 ---
-
-## 📌 Project Status
-
-This project is currently under development as part of an internship learning project to gain practical experience with the MERN stack and backend development concepts.
