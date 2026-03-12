@@ -1,12 +1,12 @@
 import jwt from 'jsonwebtoken';
 
-export const authMiddleware = async (req, res, next) => {
+export const authorization = async (req, res, next) => {
     try {
         const token = req.cookies.token;
 
         if (!token) {
             return res.status(401).json({
-                message: "Unauthorized",
+                message: "Unauthorized, no one logged in",
                 success: false
             })
         }
@@ -16,6 +16,7 @@ export const authMiddleware = async (req, res, next) => {
             return res.status(401).json({ message: "Invalid Token" })
         }
         req.userId = decoded.userId;
+        req.userRole = decoded.userRole; 
         next();
     }
     catch (error) {
@@ -24,4 +25,14 @@ export const authMiddleware = async (req, res, next) => {
             success: false
         })
     }
+}
+
+export const recruiterOnly = (req,res,next)=>{
+    if(req.userRole !== "recruiter"){
+        return res.status(403).json({
+            message:"Access denied, only recruiters are allowed to do this...",
+            success:false
+        });
+    }
+    next();
 }

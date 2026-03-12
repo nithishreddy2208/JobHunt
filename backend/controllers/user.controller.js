@@ -33,6 +33,7 @@ export const register = async (req, res) => {
         })
     }
     catch (error) {
+        console.log(error);
         return res.status(500).json({
             message: "Internal server error",
             success: false
@@ -77,6 +78,7 @@ export const login = async (req, res) => {
         })
     }
     catch (error) {
+        console.log(error);
         return res.status(500).json({
             message: "Internal server error",
             success: false
@@ -91,6 +93,7 @@ export const logout = async (req, res) => {
         });
     }
     catch (error) {
+        console.log(error);
         return res.status(500).json({
             message: "Internal server error",
             success: false
@@ -101,7 +104,7 @@ export const update = async (req, res) => {
     try {
         const userId = req.userId;
         const updateData = await User.findById(userId);
-        const {name,email,phoneNumber,bio,skills,photo} = req.body;
+        const {name,email,phoneNumber,bio,skills,resume,resumeName,Company,photo} = req.body;
 
         const existingUser = await User.findOne({ email });
  
@@ -117,12 +120,15 @@ export const update = async (req, res) => {
         if(phoneNumber) updateData.phoneNumber = phoneNumber;
         if(bio) updateData["profile.bio"] = bio;
         if(skills) updateData["profile.skills"] = skills;
+        if(resume) updateData["profile.resume"] = resume;
+        if(resumeName) updateData["profile.resumeName"] = resumeName;
+        if(Company) updateData["profile.Comapany"] = Company;
         if(photo) updateData["profile.photo"] = photo;
         
         const user = await User.findByIdAndUpdate(
             userId,
             updateData,
-            { new: true }
+            { returnDocument: "after" }
         );
         return res.status(200).json({
             message: "Profile updated successfully",
@@ -138,4 +144,3 @@ export const update = async (req, res) => {
         })
     }
 }
-

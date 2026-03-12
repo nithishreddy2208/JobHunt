@@ -32,6 +32,19 @@ const userSchema=new mongoose.Schema({
             type:[String],
             default:[]
         },
+        resume:{
+            type:String,
+            default:""
+        },
+        resumeName:{
+            type:String,
+            default:""
+        },
+        company:{
+            type:mongoose.Schema.Types.ObjectId,
+            ref:'Company',
+            default:null
+        },
         photo:{
             type:String,
             default:""
