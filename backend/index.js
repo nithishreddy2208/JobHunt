@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser'
 import { connectDb } from './config/db.js'
 import userRoutes from "./routes/user.routes.js"
 import companyRoutes from "./routes/company.routes.js"
+import jobRoutes from "./routes/job.routes.js"
 
 
 const app = express();
@@ -15,7 +16,7 @@ app.use(cookieParser());
 
 app.use('/api/user',userRoutes);
 app.use('/api/company',companyRoutes)
-
+app.use('/api/job',jobRoutes);
 
 app.get("/", (req, res) => {
     res.send("JobHunt Backend Running");

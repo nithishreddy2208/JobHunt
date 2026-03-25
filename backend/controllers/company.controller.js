@@ -2,7 +2,7 @@ import { Company } from '../models/company.model.js'
 
 export const registerCompany = async (req, res) => {
     try {
-        const createdBy = req.userId;
+        const created_by = req.userId;
         const { name } = req.body;
         if (!name) {
             return res.status(400).json({
@@ -10,7 +10,7 @@ export const registerCompany = async (req, res) => {
                 success: false
             });
         }
-        let company = await Company.findOne({ name });
+        let company = await Company.findOne({ name: { $regex: `^${name}$`, $options: "i" } });
         if (company) {
             return res.status(409).json({
                 message: "Company with that name already exists",
@@ -20,7 +20,7 @@ export const registerCompany = async (req, res) => {
 
         company = await Company.create({
             name,
-            createdBy
+            created_by
         })
         return res.status(201).json({
             message: "Company created successfully",
@@ -38,12 +38,12 @@ export const registerCompany = async (req, res) => {
 }
 export const getCompany = async (req, res) => {
     try {
-        const createdBy = req.userId;
-        const companies = await Company.find({ createdBy });
+        const created_by = req.userId;
+        const companies = await Company.find({ created_by });
 
-        if (!companies) {
+        if (companies.length === 0) {
             return res.status(404).json({
-                message: "Not found",
+                message: "Companies not found",
                 success: false
             })
         }
@@ -97,14 +97,14 @@ export const updateCompanyById = async (req, res) => {
                 success: false
             });
         }
-        if (company.createdBy.toString() !== userId) {
+        if (company.created_by.toString() !== userId) {
             return res.status(403).json({
                 message: "Access denied,only the creator can update",
                 success: false
             });
         }
         if (name) {
-            const existingCompany = await Company.findOne({ name });
+            const existingCompany = await Company.findOne({ name: { $regex: `^${name}$`, $options: "i" } });
             if (existingCompany && existingCompany._id.toString() !== companyId) {
                 return res.status(409).json({
                     message: "Company name already in use",
