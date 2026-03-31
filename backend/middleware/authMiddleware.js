@@ -36,3 +36,13 @@ export const recruiterOnly = (req,res,next)=>{
     }
     next();
 }
+
+export const jobSeekerOnly = (req,res,next)=>{
+    if(req.userRole !== "jobSeeker"){
+        return res.status(403).json({
+            message:"Access denied, only jobSeekers are allowed to do this...",
+            success:false
+        });
+    }
+    next();
+}

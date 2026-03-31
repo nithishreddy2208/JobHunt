@@ -24,6 +24,7 @@ export const postJob = async (req, res) => {
 
         const company = await Company.findById(companyId);
 
+        
         if (!company) {
             return res.status(404).json({
                 message: "Company not found",
