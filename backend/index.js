@@ -7,12 +7,12 @@ import userRoutes from "./routes/user.routes.js"
 import companyRoutes from "./routes/company.routes.js"
 import jobRoutes from "./routes/job.routes.js"
 import applicationRoutes from "./routes/application.routes.js"
+import { jobSearchService } from './services/jobSearch.service.js'
 
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-
 
 app.use('/api/user',userRoutes);
 app.use('/api/company',companyRoutes)
@@ -28,6 +28,8 @@ const PORT = process.env.PORT || 8000;
 const startServer = async () => {
     try {
         await connectDb();
+
+        await jobSearchService.init({ refreshMs: process.env.JOB_TRIE_REFRESH_MS });
 
         app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);

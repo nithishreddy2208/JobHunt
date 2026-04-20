@@ -1,5 +1,7 @@
 import { Job } from '../models/job.model.js';
 import { Company } from '../models/company.model.js';
+import { jobSearchService } from '../services/jobSearch.service.js';
+
 export const postJob = async (req, res) => {
     try {
         const { title, description, location, salary, experienceLevel, requirements, jobType, positions, companyId } = req.body;
@@ -24,7 +26,7 @@ export const postJob = async (req, res) => {
 
         const company = await Company.findById(companyId);
 
-        
+
         if (!company) {
             return res.status(404).json({
                 message: "Company not found",
@@ -61,6 +63,8 @@ export const postJob = async (req, res) => {
             company: companyId,
             created_by,
         })
+
+        jobSearchService.insertTitle(job);
         return res.status(200).json({
             message: "New Job Created Successfully",
             job,
@@ -75,6 +79,33 @@ export const postJob = async (req, res) => {
         })
     }
 }
+
+export const suggestJobTitles = async (req, res) => {
+    try {
+        const { prefix = "", limit } = req.query;
+
+        if (!prefix.trim()) {
+            return res.status(200).json({
+                suggestions: [],
+                success: true
+            });
+        }
+
+        const suggestions = jobSearchService.suggest(prefix, { limit });
+
+        return res.status(200).json({
+            suggestions,
+            success: true
+        });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            message: "Internal server error",
+            success: false
+        });
+    }
+};
+
 export const getAllJobs = async (req, res) => {
     try {
         const { keyword, location, jobType, page = 1, limit = 10 } = req.query;
@@ -112,7 +143,7 @@ export const getAllJobs = async (req, res) => {
             jobs,
             totalJobs,
             currentPage: pageNum,
-            totalPages: totalJobs === 0 ? 1 : Math.ceil(totalJobs / limit),
+            totalPages: totalJobs === 0 ? 1 : Math.ceil(totalJobs / limitNum),
             success: true
         });
 
