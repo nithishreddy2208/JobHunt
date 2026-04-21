@@ -11,25 +11,36 @@ The goal of this project is to build a scalable job portal that simplifies the r
 ## 🚀 Tech Stack
 
 ### Frontend
-- React.js
-- Axios
+
+* React.js
+* Axios
 
 ### Backend
-- Node.js
-- Express.js
+
+* Node.js
+* Express.js
 
 ### Database
-- MongoDB
-- Mongoose
+
+* MongoDB
+* Mongoose
 
 ### Authentication
-- JSON Web Token (JWT)
-- bcrypt
+
+* JSON Web Token (JWT)
+* bcrypt
+
+### Caching & Optimization
+
+* Redis (via Docker)
+* Trie (for autocomplete search)
+* MongoDB Indexing
 
 ### Other Tools
-- dotenv
-- Git & GitHub
-- Postman
+
+* dotenv
+* Git & GitHub
+* Postman
 
 ---
 
@@ -46,22 +57,172 @@ The application is designed with scalability in mind so that additional features
 ## ✨ Key Functionalities
 
 ### For Job Seekers
-- Create and manage user profiles
-- Browse and search job listings
-- Apply for jobs online
-- Track applied jobs
+
+* Create and manage user profiles
+* Browse and search job listings
+* Apply for jobs online
+* Track applied jobs
 
 ### For Recruiters
-- Company registration
-- Post new job openings
-- Manage job listings
-- View applicants for posted jobs
+
+* Company registration
+* Post new job openings
+* Manage job listings
+* View applicants for posted jobs
 
 ### General Features
-- Secure authentication system
-- Role-based access (Candidate / Recruiter)
-- RESTful API architecture
-- Responsive user interface
+
+* Secure authentication system
+* Role-based access (Candidate / Recruiter)
+* RESTful API architecture
+* Responsive user interface
+
+---
+
+## ⚡ Performance & Optimization Enhancements
+
+### 🔴 Redis (Caching Layer)
+
+Redis is used to cache frequently accessed data such as job search results, reducing database load and improving response time.
+
+#### 🛠️ Setup & Usage
+
+1️⃣ Install Docker
+
+2️⃣ Run Redis container
+
+```bash
+docker run --name jobhunt-redis -p 6379:6379 -d redis:7-alpine
+```
+
+3️⃣ Verify Redis is running
+
+```bash
+docker exec -it jobhunt-redis redis-cli ping
+```
+
+Expected output:
+
+```
+PONG
+```
+
+4️⃣ Open Redis CLI
+
+```bash
+docker exec -it jobhunt-redis redis-cli
+```
+
+---
+
+#### 🔍 Useful Redis Commands (Testing)
+
+```bash
+SCAN 0 MATCH jobhunt:jobs:search:* COUNT 100
+```
+
+```bash
+GET "jobhunt:jobs:search:keyword=dev:location=:jobType=:page=1:limit=10"
+```
+
+```bash
+TTL "jobhunt:jobs:search:keyword=dev:location=:jobType=:page=1:limit=10"
+```
+
+---
+
+#### 💡 How Redis is Used
+
+* Caches job search results
+* Reduces repeated database queries
+* Improves API response time
+* Uses Cache-Aside Pattern
+
+---
+
+### 🌳 Trie (Search Optimization)
+
+Trie (Prefix Tree) is used for efficient prefix-based searching (autocomplete).
+
+#### 🎯 Purpose
+
+* Fast autocomplete suggestions
+* Efficient prefix matching
+* Better search experience
+
+#### 🧠 How it Works
+
+1. Job titles are loaded into a Trie
+
+2. User types a query (e.g., "dev")
+
+3. Trie returns matching prefixes:
+
+   * developer
+   * devops
+   * device
+
+4. Final job data is fetched from MongoDB
+
+---
+
+#### ⚡ Benefits
+
+* O(n) prefix search
+* Faster than regex-based search
+* Scalable for large datasets
+
+---
+
+### 📊 MongoDB Indexing (Query Optimization)
+
+Indexes are used to speed up database queries and avoid full collection scans.
+
+#### 🧩 Example Indexes
+
+```js
+jobSchema.index({ title: 1, location: 1 });
+userSchema.index({ email: 1 }, { unique: true });
+applicationSchema.index({ jobId: 1 });
+applicationSchema.index({ userId: 1 });
+```
+
+---
+
+#### 🧠 How Indexing Helps
+
+Without indexing:
+
+* MongoDB scans entire collection
+
+With indexing:
+
+* Direct lookup using indexed fields
+
+---
+
+#### ⚡ Benefits
+
+* Faster queries
+* Reduced database load
+* Better scalability
+
+---
+
+### 🔗 Combined Optimization Flow
+
+```
+User Search →
+   Redis Cache (fast)
+      ↓ (miss)
+   MongoDB (optimized with indexes)
+      ↓
+   Store in Redis
+```
+
+* Trie improves search input experience
+* Redis improves response time
+* Indexing optimizes database queries
 
 ---
 
@@ -128,11 +289,11 @@ npm run dev
 
 ## 🔮 Future Enhancements
 
-- Resume upload feature
-- Job recommendation system
-- Email notifications
-- Real-time chat between recruiter and candidate
-- Advanced job filtering
+* Resume upload feature (with security scanning)
+* Job recommendation system
+* Email notifications
+* Real-time chat between recruiter and candidate
+* Advanced job filtering
 
 ---
 

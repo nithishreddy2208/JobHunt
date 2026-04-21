@@ -47,4 +47,12 @@ const jobSchema=mongoose.Schema({
         ref:'Application'
     }]
 },{ timestamps: true })
+
+jobSchema.index({ createdAt: -1 });
+jobSchema.index({ created_by: 1, createdAt: -1 });
+jobSchema.index({ jobType: 1, createdAt: -1 });
+jobSchema.index({ location: 1 }); 
+jobSchema.index({ location: 1, jobType: 1, createdAt: -1 }); 
+jobSchema.index({ title: "text", description: "text" });
+
 export const Job=mongoose.model('Job',jobSchema);

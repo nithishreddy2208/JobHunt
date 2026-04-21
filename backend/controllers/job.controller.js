@@ -1,6 +1,7 @@
 import { Job } from '../models/job.model.js';
 import { Company } from '../models/company.model.js';
 import { jobSearchService } from '../services/jobSearch.service.js';
+import { redisService } from '../services/redis.service.js';
 
 export const postJob = async (req, res) => {
     try {
@@ -25,7 +26,6 @@ export const postJob = async (req, res) => {
         }
 
         const company = await Company.findById(companyId);
-
 
         if (!company) {
             return res.status(404).json({
@@ -65,6 +65,9 @@ export const postJob = async (req, res) => {
         })
 
         jobSearchService.insertTitle(job);
+
+        await redisService.delByPrefix('jobhunt:jobs:search:');
+        await redisService.del(`jobhunt:jobs:detail:${job._id.toString()}`);
         return res.status(200).json({
             message: "New Job Created Successfully",
             job,
@@ -110,26 +113,34 @@ export const getAllJobs = async (req, res) => {
     try {
         const { keyword, location, jobType, page = 1, limit = 10 } = req.query;
 
+        const pageNum = Number(page);
+        const limitNum = Number(limit);
+        const skip = (pageNum - 1) * limitNum;
+
+        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 600;
+        const cacheKey = `jobhunt:jobs:search:keyword=${encodeURIComponent(keyword || "")}:location=${encodeURIComponent(location || "")}:jobType=${encodeURIComponent(jobType || "")}:page=${pageNum}:limit=${limitNum}`;
+
+        const cached = await redisService.getJson(cacheKey);
+        if (cached) {
+            return res.status(200).json(cached);
+        }
+
         let query = {};
 
         if (keyword) {
             query.$or = [
-                { title: { $regex: keyword, $options: "i" } },
-                { description: { $regex: keyword, $options: "i" } }
+                { title: { $regex: `^${keyword}`, $options: "i" } },
+                { description: { $regex: `^${keyword}`, $options: "i" } }
             ];
         }
 
         if (location) {
-            query.location = { $regex: location, $options: "i" };
+            query.location = { $regex: `^${location}`, $options: "i" };
         }
 
         if (jobType) {
             query.jobType = jobType
         }
-
-        const pageNum = Number(page);
-        const limitNum = Number(limit);
-        const skip = (pageNum - 1) * limitNum;
 
         const jobs = await Job.find(query)
             .populate("company")
@@ -139,13 +150,17 @@ export const getAllJobs = async (req, res) => {
 
         const totalJobs = await Job.countDocuments(query);
 
-        return res.status(200).json({
+        const payload = {
             jobs,
             totalJobs,
             currentPage: pageNum,
             totalPages: totalJobs === 0 ? 1 : Math.ceil(totalJobs / limitNum),
             success: true
-        });
+        };
+
+        await redisService.setJson(cacheKey, payload, { ttlSeconds: cacheTtlSeconds });
+
+        return res.status(200).json(payload);
 
     } catch (error) {
         console.log(error);
@@ -155,6 +170,7 @@ export const getAllJobs = async (req, res) => {
         });
     }
 }
+
 export const getAdminJobs = async (req, res) => {
     try {
         const adminId = req.userId;
@@ -180,11 +196,20 @@ export const getAdminJobs = async (req, res) => {
         })
     }
 }
+
 export const getJobById = async (req, res) => {
     try {
         const jobId = req.params.id;
         const userId = req.userId;
         const userRole = req.userRole;
+
+        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 600;
+        const cacheKey = `jobhunt:jobs:detail:${jobId}`;
+
+        const cached = await redisService.getJson(cacheKey);
+        if (cached) {
+            return res.status(200).json(cached);
+        }
 
         const job = await Job.findById(jobId).populate("company");
 
@@ -205,10 +230,14 @@ export const getJobById = async (req, res) => {
             });
         }
 
-        return res.status(200).json({
+        const payload = {
             job,
             success: true
-        });
+        };
+
+        await redisService.setJson(cacheKey, payload, { ttlSeconds: cacheTtlSeconds });
+
+        return res.status(200).json(payload);
 
     } catch (error) {
         console.log(error);
