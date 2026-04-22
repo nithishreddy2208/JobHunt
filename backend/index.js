@@ -30,27 +30,21 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 8000;
 
+let server;
+
 const startServer = async () => {
     try {
         await connectDb();
         console.log("MongoDB connected");
 
-        try {
-            await redisService.connect();
-        } catch (err) {
-            console.error("Redis connection failed (continuing without cache):", err);
-        }
+        await redisService.connect();
 
-        try {
-            await jobSearchService.init({
-                refreshMs: process.env.JOB_TRIE_REFRESH_MS
-            });
-            console.log("Trie initialized");
-        } catch (err) {
-            console.error("Trie initialization failed:", err);
-        }
+        await jobSearchService.init({
+            refreshMs: process.env.JOB_TRIE_REFRESH_MS
+        });
+        console.log("Trie initialized");
 
-        app.listen(PORT, () => {
+        server = app.listen(PORT, () => {
             console.log(`Server running on port ${PORT}`);
         });
 
@@ -66,14 +60,22 @@ const shutdown = async () => {
     console.log("\nShutting down server...");
 
     try {
-        await redisService.disconnect();
-        console.log("Redis disconnected");
-    } catch (err) {
-        console.error("Error during Redis shutdown:", err);
-    }
+        if (server) {
+            server.close(() => {
+                console.log("HTTP server closed");
+            });
+        }
 
-    process.exit(0);
+        await redisService.disconnect();
+
+        console.log("Cleanup completed");
+        process.exit(0);
+
+    } catch (err) {
+        console.error("Error during shutdown:", err);
+        process.exit(1);
+    }
 };
 
-process.on("SIGINT", shutdown);   
-process.on("SIGTERM", shutdown); 
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

@@ -117,7 +117,7 @@ export const getAllJobs = async (req, res) => {
         const limitNum = Number(limit);
         const skip = (pageNum - 1) * limitNum;
 
-        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 600;
+        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 300;
         const cacheKey = `jobhunt:jobs:search:keyword=${encodeURIComponent(keyword || "")}:location=${encodeURIComponent(location || "")}:jobType=${encodeURIComponent(jobType || "")}:page=${pageNum}:limit=${limitNum}`;
 
         const cached = await redisService.getJson(cacheKey);
@@ -158,7 +158,7 @@ export const getAllJobs = async (req, res) => {
             success: true
         };
 
-        await redisService.setJson(cacheKey, payload, { ttlSeconds: cacheTtlSeconds });
+        await redisService.setJson(cacheKey, payload, cacheTtlSeconds);
 
         return res.status(200).json(payload);
 
@@ -203,7 +203,7 @@ export const getJobById = async (req, res) => {
         const userId = req.userId;
         const userRole = req.userRole;
 
-        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 600;
+        const cacheTtlSeconds = Number(process.env.JOB_CACHE_TTL_SECONDS) || 300;
         const cacheKey = `jobhunt:jobs:detail:${jobId}`;
 
         const cached = await redisService.getJson(cacheKey);
@@ -235,7 +235,7 @@ export const getJobById = async (req, res) => {
             success: true
         };
 
-        await redisService.setJson(cacheKey, payload, { ttlSeconds: cacheTtlSeconds });
+        await redisService.setJson(cacheKey, payload, cacheTtlSeconds);
 
         return res.status(200).json(payload);
 

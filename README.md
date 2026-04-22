@@ -87,6 +87,8 @@ Redis is used to cache frequently accessed data such as job search results, redu
 
 #### 🛠️ Setup & Usage
 
+##### Option 1: Redis via Docker (Local)
+
 1️⃣ Install Docker
 
 2️⃣ Run Redis container
@@ -111,6 +113,48 @@ PONG
 
 ```bash
 docker exec -it jobhunt-redis redis-cli
+```
+
+---
+
+##### Option 2: Upstash Redis (Cloud)
+
+1️⃣ Create an Upstash account
+
+Go to:
+
+```text
+https://console.upstash.com/
+```
+
+2️⃣ Create a Redis database
+
+In Upstash Console:
+
+* Redis
+* Create Database
+
+3️⃣ Copy the Redis connection string
+
+In your Upstash Redis database page, copy the Redis URL (TLS) that looks like:
+
+```text
+rediss://:PASSWORD@xxxxx.upstash.io:6379
+```
+
+4️⃣ Add it to backend environment variables
+
+Add this to `backend/.env`:
+
+```bash
+REDIS_URL=rediss://:PASSWORD@xxxxx.upstash.io:6379
+JOB_CACHE_TTL_SECONDS=300
+```
+
+5️⃣ Restart backend
+
+```bash
+npm run dev
 ```
 
 ---
@@ -163,6 +207,21 @@ Trie (Prefix Tree) is used for efficient prefix-based searching (autocomplete).
    * device
 
 4. Final job data is fetched from MongoDB
+
+---
+
+#### 🔄 Trie Refresh (Optional)
+
+On server start, job titles are loaded into the Trie from MongoDB.
+
+* If `JOB_TRIE_REFRESH_MS` is **not set**, the Trie is loaded **once** at startup.
+* If `JOB_TRIE_REFRESH_MS` **is set** (in milliseconds), the Trie will periodically refresh from MongoDB.
+
+Example (`backend/.env`):
+
+```bash
+JOB_TRIE_REFRESH_MS=600000
+```
 
 ---
 
@@ -277,6 +336,9 @@ npm install
 PORT=8000
 MONGO_URI=your_mongodb_connection_string
 JWT_SECRET=your_secret_key
+REDIS_URL=redis://localhost:6379
+JOB_CACHE_TTL_SECONDS=300
+JOB_TRIE_REFRESH_MS=600000
 ```
 
 ### 5️⃣ Run the server
