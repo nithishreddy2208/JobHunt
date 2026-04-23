@@ -11,6 +11,8 @@ import applicationRoutes from "./routes/application.routes.js";
 import { jobSearchService } from './services/jobSearch.service.js';
 import { redisService } from './services/redis.service.js';
 
+import { initClamAV } from './utils/clamav.js';
+
 dotenv.config();
 
 const app = express();
@@ -38,6 +40,13 @@ const startServer = async () => {
         console.log("MongoDB connected");
 
         await redisService.connect();
+
+        try {
+            await initClamAV();
+            console.log("ClamAV initialized");
+        } catch (err) {
+            console.error("ClamAV initialization failed (continuing without scan):", err);
+        }
 
         await jobSearchService.init({
             refreshMs: process.env.JOB_TRIE_REFRESH_MS

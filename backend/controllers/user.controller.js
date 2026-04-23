@@ -1,6 +1,11 @@
 import { User } from '../models/user.model.js'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import getDataUri from "../utils/datauri.js";
+import cloudinary from "../utils/cloudinary.js";
+import { scanFile } from "../utils/clamav.js";
+
+
 
 export const register = async (req, res) => {
     try {
@@ -13,7 +18,7 @@ export const register = async (req, res) => {
         }
         const user = await User.findOne({ email });
         if (user) {
-            res.status(409).json({
+            return res.status(409).json({
                 message: "User already exists",
                 success: false
             });
@@ -103,44 +108,65 @@ export const logout = async (req, res) => {
 export const update = async (req, res) => {
     try {
         const userId = req.userId;
-        const updateData = await User.findById(userId);
-        const {name,email,phoneNumber,bio,skills,resume,resumeName,Company,photo} = req.body;
+        const user = await User.findById(userId);
 
-        const existingUser = await User.findOne({ email });
- 
-        if (existingUser && existingUser._id.toString() !== userId) {
-            return res.status(409).json({
-                message: "Email already in use",
-                success: false
-            });
+        const { name, email, phoneNumber, bio, skills, company } = req.body;
+
+        if (email) {
+            const existingUser = await User.findOne({ email });
+            if (existingUser && existingUser._id.toString() !== userId) {
+                return res.status(409).json({
+                    message: "Email already in use",
+                    success: false
+                });
+            }
         }
-        
-        if(name) updateData.name = name;
-        if(email) updateData.email = email;
-        if(phoneNumber) updateData.phoneNumber = phoneNumber;
-        if(bio) updateData["profile.bio"] = bio;
-        if(skills) updateData["profile.skills"] = skills;
-        if(resume) updateData["profile.resume"] = resume;
-        if(resumeName) updateData["profile.resumeName"] = resumeName;
-        if(Company) updateData["profile.Comapany"] = Company;
-        if(photo) updateData["profile.photo"] = photo;
-        
-        const user = await User.findByIdAndUpdate(
-            userId,
-            updateData,
-            { returnDocument: "after" }
-        );
+
+        if (req.file) {
+            const file = req.file;
+
+            const { isInfected, viruses } = await scanFile(file);
+
+            if (isInfected) {
+                return res.status(400).json({
+                    message: "File is infected",
+                    viruses,
+                    success: false
+                });
+            }
+
+            const fileUri = getDataUri(file);
+
+            const cloudResponse = await cloudinary.uploader.upload(fileUri.content, {
+                folder: "jobhunt/resumes",
+                resource_type: "auto"
+            });
+
+            user.profile.resume = cloudResponse.secure_url;
+            user.profile.resumeName = file.originalname;
+        }
+
+        if (name) user.name = name;
+        if (email) user.email = email;
+        if (phoneNumber) user.phoneNumber = phoneNumber;
+
+        if (bio) user.profile.bio = bio;
+        if (skills) user.profile.skills = skills;
+        if (company) user.profile.company = company;
+
+        await user.save();
+
         return res.status(200).json({
             message: "Profile updated successfully",
             success: true,
             user
         });
-    }
-    catch (error) {
-        console.log(error)
+
+    } catch (error) {
+        console.log(error);
         return res.status(500).json({
             message: "Internal server error",
             success: false
-        })
+        });
     }
-}
+};

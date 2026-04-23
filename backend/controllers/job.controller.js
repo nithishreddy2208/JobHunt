@@ -210,7 +210,7 @@ export const getJobById = async (req, res) => {
         if (cached) {
             return res.status(200).json(cached);
         }
-
+        
         const job = await Job.findById(jobId).populate("company");
 
         if (!job) {

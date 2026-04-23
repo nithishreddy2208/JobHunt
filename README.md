@@ -285,7 +285,60 @@ User Search →
 
 ---
 
-## 📂 Project Structure (Backend)
+## �️ Secure Resume Upload (Multer + ClamAV + Cloudinary)
+
+To keep uploads safe and production-ready, the backend uses:
+
+* **Multer**: receives uploaded files (configured to use **memory storage**).
+* **ClamAV**: scans the uploaded file for malware before it is stored.
+* **Cloudinary**: stores the final (safe) file and returns a CDN URL.
+
+### 🐳 ClamAV Setup (Docker Desktop)
+
+1️⃣ Install Docker Desktop
+
+2️⃣ Pull ClamAV image
+
+```bash
+docker pull clamav/clamav:latest
+```
+
+3️⃣ Run ClamAV container
+
+```bash
+docker run --name jobhunt-clamav -p 3310:3310 -d clamav/clamav:latest
+```
+
+4️⃣ Verify container is running
+
+```bash
+docker ps
+```
+
+You should see `jobhunt-clamav` running and port `3310` exposed.
+
+### 🔄 Working Flow
+
+```
+Upload →
+   Multer (memory) →
+      Save temp file →
+         ClamAV scan →
+            Safe? →
+               YES → Cloudinary →
+                      Save URL + originalName
+               NO → Reject
+```
+
+### ✅ Why this flow
+
+* **Security**: prevents infected files from being stored or served.
+* **Performance**: memory upload avoids unnecessary disk I/O until needed.
+* **Scalability**: Cloudinary offloads file storage + delivery.
+
+---
+
+## �📂 Project Structure (Backend)
 
 ```
 backend
