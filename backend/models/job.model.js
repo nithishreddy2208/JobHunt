@@ -45,7 +45,11 @@ const jobSchema=mongoose.Schema({
     applications:[{
         type:mongoose.Schema.Types.ObjectId,
         ref:'Application'
-    }]
+    }],
+    embedding: {
+        type: [Number],
+        default: null
+    }
 },{ timestamps: true })
 
 jobSchema.index({ createdAt: -1 });

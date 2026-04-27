@@ -7,6 +7,7 @@ import userRoutes from "./routes/user.routes.js";
 import companyRoutes from "./routes/company.routes.js";
 import jobRoutes from "./routes/job.routes.js";
 import applicationRoutes from "./routes/application.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 import { jobSearchService } from './services/jobSearch.service.js';
 import { redisService } from './services/redis.service.js';
@@ -25,6 +26,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/company', companyRoutes);
 app.use('/api/job', jobRoutes);
 app.use('/api/application', applicationRoutes);
+app.use('/api/ai', aiRoutes);
 
 app.get("/", (req, res) => {
     res.send("JobHunt Backend Running");

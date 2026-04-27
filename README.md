@@ -77,6 +77,13 @@ The application is designed with scalability in mind so that additional features
 * RESTful API architecture
 * Responsive user interface
 
+### AI Features
+
+* Hybrid LLM support (**Ollama local** → **Gemini** → graceful fallback)
+* Resume text extraction and storage for AI workflows
+* Local semantic search embeddings (MiniLM via `@xenova/transformers`)
+* AI endpoints for resume analysis, cover letter generation, interview preparation, and job recommendations
+
 ---
 
 ## ⚡ Performance & Optimization Enhancements
@@ -379,7 +386,10 @@ cd jobhunt
 
 ### 3️⃣ Install dependencies
 
+This project contains a backend Node.js app under `backend/`.
+
 ```bash
+cd backend
 npm install
 ```
 
@@ -388,17 +398,38 @@ npm install
 ```
 PORT=8000
 MONGO_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
+SECRET_KEY=your_secret_key
 REDIS_URL=redis://localhost:6379
 JOB_CACHE_TTL_SECONDS=300
 JOB_TRIE_REFRESH_MS=600000
+
+# AI / LLM
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=llama3
+LLM_TIMEOUT_MS=60000
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-1.5-flash-latest
+AI_CACHE_TTL_SECONDS=900
 ```
 
 ### 5️⃣ Run the server
 
 ```bash
+cd backend
 npm run dev
 ```
+
+---
+
+## 🤖 AI Endpoints (Backend)
+
+All AI endpoints are mounted under `/api/ai`.
+
+* `POST /api/ai/analyze-resume` (auth)
+* `POST /api/ai/generate-cover-letter` (auth)
+* `POST /api/ai/interview-prep` (auth)
+* `POST /api/ai/recommend-jobs` (auth)
+* `POST /api/ai/search`
 
 ---
 

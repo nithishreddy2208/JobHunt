@@ -40,6 +40,14 @@ const userSchema=new mongoose.Schema({
             type:String,
             default:""
         },
+        resumeText:{
+            type:String,
+            default:""
+        },
+        embedding:{
+            type:[Number],
+            default:null
+        },
         company:{
             type:mongoose.Schema.Types.ObjectId,
             ref:'Company',

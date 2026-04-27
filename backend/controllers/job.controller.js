@@ -2,6 +2,7 @@ import { Job } from '../models/job.model.js';
 import { Company } from '../models/company.model.js';
 import { jobSearchService } from '../services/jobSearch.service.js';
 import { redisService } from '../services/redis.service.js';
+import { getEmbedding } from '../utils/embedding.js';
 
 export const postJob = async (req, res) => {
     try {
@@ -66,8 +67,27 @@ export const postJob = async (req, res) => {
 
         jobSearchService.insertTitle(job);
 
+        setImmediate(async () => {
+            try {
+                const embeddingText = [
+                    `Title: ${job.title}`,
+                    `Description: ${job.description}`,
+                    `Requirements: ${(job.requirements || []).join(', ')}`,
+                    `Location: ${job.location}`,
+                    `Job Type: ${job.jobType}`
+                ].join('\n');
+
+                const embedding = await getEmbedding(embeddingText);
+                await Job.updateOne({ _id: job._id }, { $set: { embedding } });
+            } catch (err) {
+                console.error('Job embedding generation failed:', err?.message || err);
+            }
+        });
+
         await redisService.delByPrefix('jobhunt:jobs:search:');
         await redisService.del(`jobhunt:jobs:detail:${job._id.toString()}`);
+        await redisService.delByPrefix('jobhunt:ai:search:');
+        await redisService.delByPrefix('jobhunt:ai:recommendation:');
         return res.status(200).json({
             message: "New Job Created Successfully",
             job,

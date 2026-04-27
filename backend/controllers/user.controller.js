@@ -1,11 +1,12 @@
 import { User } from '../models/user.model.js'
 import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
+import { getEmbedding } from '../utils/embedding.js'
+
 import getDataUri from "../utils/datauri.js";
 import cloudinary from "../utils/cloudinary.js";
 import { scanFile } from "../utils/clamav.js";
-
-
+import { extractPdfText } from "../utils/pdfText.js";
 
 export const register = async (req, res) => {
     try {
@@ -45,6 +46,7 @@ export const register = async (req, res) => {
         })
     }
 }
+
 export const login = async (req, res) => {
     try {
         const { email, password, role } = req.body;
@@ -90,6 +92,7 @@ export const login = async (req, res) => {
         })
     }
 }
+
 export const logout = async (req, res) => {
     try {
         return res.status(200).cookie("token", "", { maxAge: 0, httpOnly: true, secure: true }).json({
@@ -105,12 +108,20 @@ export const logout = async (req, res) => {
         })
     }
 }
+
 export const update = async (req, res) => {
     try {
         const userId = req.userId;
         const user = await User.findById(userId);
 
-        const { name, email, phoneNumber, bio, skills, company } = req.body;
+        if (!user) {
+            return res.status(404).json({
+                message: "User not found",
+                success: false
+            });
+        }
+
+        const { name, email, phoneNumber, bio, skills, company } = req.body || {};
 
         if (email) {
             const existingUser = await User.findOne({ email });
@@ -144,6 +155,28 @@ export const update = async (req, res) => {
 
             user.profile.resume = cloudResponse.secure_url;
             user.profile.resumeName = file.originalname;
+
+            try {
+                const extracted = await extractPdfText(file.buffer);
+                if (extracted) {
+                    user.profile.resumeText = extracted;
+                }
+            } catch (err) {
+                console.error('Resume text extraction failed:', err?.message || err);
+            }
+        }
+
+        if (user.profile.resumeText && user.profile.resumeText.trim()) {
+            const resumeText = user.profile.resumeText;
+
+            setImmediate(async () => {
+                try {
+                    const embedding = await getEmbedding(resumeText);
+                    await User.updateOne({ _id: userId }, { $set: { 'profile.embedding': embedding } });
+                } catch (err) {
+                    console.error('Resume embedding generation failed:', err?.message || err);
+                }
+            });
         }
 
         if (name) user.name = name;
