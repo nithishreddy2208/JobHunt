@@ -1,4 +1,4 @@
-import {register,login,logout,update} from '../controllers/user.controller.js'
+import {register,login,logout,update,upgradeToPro,getSubscriptionStatus} from '../controllers/user.controller.js'
 import express from 'express'
 import { authentication } from '../middleware/authMiddleware.js';
 import { singleUpload } from '../middleware/multer.js';
@@ -9,5 +9,7 @@ router.post('/register',register);
 router.post('/login',login);
 router.get('/logout',logout);
 router.put('/profile/update',authentication,singleUpload,update);
+router.post('/upgrade',authentication,upgradeToPro);
+router.get('/subscription',authentication,getSubscriptionStatus);
 
 export default router;

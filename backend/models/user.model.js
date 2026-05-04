@@ -23,6 +23,19 @@ const userSchema=new mongoose.Schema({
         enum:['recruiter','jobSeeker'],
         required:true
     },
+    subscription:{
+        type:String,
+        enum:['FREE','PRO'],
+        default:'FREE'
+    },
+    isPro:{
+        type:Boolean,
+        default:false
+    },
+    proSince:{
+        type:Date,
+        default:null
+    },
     profile:{
         bio:{
             type:String,

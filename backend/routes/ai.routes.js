@@ -1,5 +1,6 @@
 import express from 'express';
 import { authentication } from '../middleware/authMiddleware.js';
+import { aiUsageLimit } from '../middleware/subscription.js';
 import {
   analyzeResume,
   generateCoverLetter,
@@ -10,10 +11,13 @@ import {
 
 const router = express.Router();
 
+// Free + unrestricted: semantic search is always available
 router.post('/search', semanticJobSearch);
-router.post('/recommend-jobs', authentication, recommendJobs);
-router.post('/analyze-resume', authentication, analyzeResume);
-router.post('/generate-cover-letter', authentication, generateCoverLetter);
-router.post('/interview-prep', authentication, interviewPrep);
+
+// Auth + per-day quota for FREE users (PRO bypasses)
+router.post('/recommend-jobs', authentication, aiUsageLimit, recommendJobs);
+router.post('/analyze-resume', authentication, aiUsageLimit, analyzeResume);
+router.post('/generate-cover-letter', authentication, aiUsageLimit, generateCoverLetter);
+router.post('/interview-prep', authentication, aiUsageLimit, interviewPrep);
 
 export default router;

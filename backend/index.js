@@ -11,6 +11,9 @@ import aiRoutes from "./routes/ai.routes.js";
 
 import { jobSearchService } from './services/jobSearch.service.js';
 import { redisService } from './services/redis.service.js';
+import { llmService } from './services/llm.service.js';
+import { startAllWorkers, stopAllWorkers } from './workers/index.js';
+import { closeBullConnection } from './config/queue.js';
 
 import { initClamAV } from './utils/clamav.js';
 
@@ -59,6 +62,16 @@ const startServer = async () => {
             console.log(`Server running on port ${PORT}`);
         });
 
+        llmService.warmup().catch(() => {});
+
+        if ((process.env.WORKERS_INLINE || 'true').toLowerCase() !== 'false') {
+            try {
+                startAllWorkers();
+            } catch (err) {
+                console.error('[workers] failed to start inline:', err?.message || err);
+            }
+        }
+
     } catch (error) {
         console.error("Server failed to start:", error);
         process.exit(1);
@@ -77,6 +90,8 @@ const shutdown = async () => {
             });
         }
 
+        await stopAllWorkers();
+        await closeBullConnection();
         await redisService.disconnect();
 
         console.log("Cleanup completed");

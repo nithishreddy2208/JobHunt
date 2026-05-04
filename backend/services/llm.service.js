@@ -1,106 +1,198 @@
 import { geminiService } from './gemini.service.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
-const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 30000;
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi';
+const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 10000;
+const NUM_PREDICT = Number(process.env.OLLAMA_NUM_PREDICT) || 100;
+const TEMPERATURE = Number.isFinite(Number(process.env.OLLAMA_TEMPERATURE))
+  ? Number(process.env.OLLAMA_TEMPERATURE)
+  : 0.4;
 
-const withTimeout = async (promise, ms) => {
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error('LLM request timed out')), ms);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
+const buildOllamaBody = (prompt, { stream = false, numPredict, temperature, format } = {}) => {
+  const body = {
+    model: OLLAMA_MODEL,
+    prompt,
+    stream,
+    options: {
+      num_predict: Number.isFinite(numPredict) ? numPredict : NUM_PREDICT,
+      temperature: Number.isFinite(temperature) ? temperature : TEMPERATURE
+    }
+  };
+  if (format) body.format = format;
+  return body;
 };
 
-const tryOllama = async (prompt) => {
+const normalizeOllamaError = (err, timeoutMs) => {
+  if (err?.name === 'AbortError') {
+    return new Error(`Ollama timeout after ${timeoutMs}ms`);
+  }
+  const msg = err?.message || String(err);
+  if (err?.cause?.code === 'ECONNREFUSED' || /ECONNREFUSED/i.test(msg)) {
+    return new Error('Ollama not running (connection refused)');
+  }
+  return err instanceof Error ? err : new Error(msg);
+};
+
+const callOllamaNonStream = async (prompt, { timeoutMs = TIMEOUT_MS, numPredict, temperature, format } = {}) => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(`${OLLAMA_URL}/api/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: OLLAMA_MODEL,
-        prompt,
-        stream: false
-      }),
+      body: JSON.stringify(buildOllamaBody(prompt, { stream: false, numPredict, temperature, format })),
       signal: controller.signal
     });
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
-      throw new Error(`Ollama failed: ${res.status} ${errText}`);
+      throw new Error(`Ollama HTTP ${res.status}: ${errText}`);
     }
 
     const json = await res.json();
     const text = json?.response;
     if (!text) throw new Error('Ollama returned empty response');
-
     return text;
   } catch (err) {
-    if (err?.name === 'AbortError') {
-      throw new Error(`Ollama request aborted (timeout after ${TIMEOUT_MS}ms). Increase LLM_TIMEOUT_MS.`);
-    }
-    throw err;
+    throw normalizeOllamaError(err, timeoutMs);
   } finally {
-    clearTimeout(timeoutId);
+    clearTimeout(timer);
+  }
+};
+
+const callOllamaStream = async (prompt, onToken, { timeoutMs = TIMEOUT_MS, numPredict, temperature, format } = {}) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(buildOllamaBody(prompt, { stream: true, numPredict, temperature, format })),
+      signal: controller.signal
+    });
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Ollama HTTP ${res.status}: ${errText}`);
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffered = '';
+    let full = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffered += decoder.decode(value, { stream: true });
+      const lines = buffered.split('\n');
+      buffered = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const evt = JSON.parse(trimmed);
+          if (evt?.response) {
+            full += evt.response;
+            if (typeof onToken === 'function') onToken(evt.response);
+          }
+          if (evt?.done) {
+            return full;
+          }
+        } catch {
+          // ignore malformed JSON line in stream
+        }
+      }
+    }
+
+    if (!full) throw new Error('Ollama stream returned empty response');
+    return full;
+  } catch (err) {
+    throw normalizeOllamaError(err, timeoutMs);
+  } finally {
+    clearTimeout(timer);
   }
 };
 
 export class LlmService {
-  async generateResponse(prompt) {
+  constructor() {
+    this.warmedUp = false;
+  }
+
+  async warmup() {
+    const start = Date.now();
+    try {
+      await callOllamaNonStream('ping', { timeoutMs: 30000 });
+      this.warmedUp = true;
+      console.log(`[llm] warmup ok model=${OLLAMA_MODEL} ms=${Date.now() - start}`);
+    } catch (err) {
+      console.log(`[llm] warmup failed model=${OLLAMA_MODEL} ms=${Date.now() - start} err=${err?.message || err}`);
+    }
+  }
+
+  async generateResponse(prompt, { stream = false, onToken, numPredict, temperature, timeoutMs, format } = {}) {
     const p = String(prompt || '').trim();
     if (!p) {
-      return { success: false, message: 'AI service unavailable' };
+      return { success: false, message: 'AI response unavailable' };
     }
 
+    const startedAt = Date.now();
     let ollamaError = null;
-    let geminiError = null;
+    const opts = { numPredict, temperature, timeoutMs, format };
 
     try {
-      console.log('Using Ollama');
-      const text = await tryOllama(p);
-      return { success: true, provider: 'ollama', text };
+      const text = stream
+        ? await callOllamaStream(p, onToken, opts)
+        : await callOllamaNonStream(p, opts);
+
+      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=true`);
+      return { success: true, provider: 'ollama', model: OLLAMA_MODEL, text };
     } catch (err) {
       ollamaError = err?.message || String(err);
-      const hasGeminiKey = Boolean(process.env.GEMINI_API_KEY);
+      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=false err=${ollamaError}`);
 
-      if (!hasGeminiKey) {
-        console.log('Using fallback');
-        return {
-          success: false,
-          message: 'AI service unavailable',
-          details: { ollamaError }
-        };
-      }
-
-      try {
-        console.log('Using Gemini');
-        const res = await withTimeout(geminiService.generateJson({ system: '', user: p }), TIMEOUT_MS);
-        if (!res?.ok) {
-          throw new Error(res?.data?.error || res?.data?.message || 'Gemini request failed');
+      if (stream) {
+        try {
+          const text = await callOllamaNonStream(p, opts);
+          if (typeof onToken === 'function') onToken(text);
+          console.log(`[llm] provider=ollama-nonstream-fallback model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=true`);
+          return { success: true, provider: 'ollama', model: OLLAMA_MODEL, text };
+        } catch (err2) {
+          ollamaError = err2?.message || String(err2);
         }
+      }
+    }
 
+    if (process.env.GEMINI_API_KEY) {
+      const geminiStart = Date.now();
+      try {
+        const res = await geminiService.generateJson({ system: '', user: p });
+        if (!res?.ok) throw new Error(res?.data?.error || res?.data?.message || 'Gemini request failed');
         const text = res?.data?.text || '';
         if (!text) throw new Error('Gemini returned empty response');
 
+        console.log(`[llm] provider=gemini ms=${Date.now() - geminiStart} ok=true`);
         return { success: true, provider: 'gemini', text };
-      } catch (err2) {
-        geminiError = err2?.message || String(err2);
-        console.log('Using fallback');
+      } catch (err) {
+        const geminiError = err?.message || String(err);
+        console.log(`[llm] provider=gemini ms=${Date.now() - geminiStart} ok=false err=${geminiError}`);
         return {
           success: false,
-          message: 'AI service unavailable',
+          message: 'AI response unavailable',
           details: { ollamaError, geminiError }
         };
       }
     }
+
+    return {
+      success: false,
+      message: 'AI response unavailable',
+      details: { ollamaError }
+    };
   }
 }
 

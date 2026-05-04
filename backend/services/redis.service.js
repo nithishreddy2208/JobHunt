@@ -95,6 +95,36 @@ class RedisService {
     }
   }
 
+  async incrWithTtl(key, ttlSeconds) {
+    try {
+      await this.ensureConnection();
+      if (!this.connected) return null;
+
+      const count = await this.client.incr(key);
+      if (count === 1 && Number(ttlSeconds) > 0) {
+        await this.client.expire(key, Number(ttlSeconds));
+      }
+      return count;
+    } catch (err) {
+      console.error('Redis incrWithTtl failed:', err);
+      return null;
+    }
+  }
+
+  async getNumber(key) {
+    try {
+      await this.ensureConnection();
+      if (!this.connected) return 0;
+
+      const raw = await this.client.get(key);
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : 0;
+    } catch (err) {
+      console.error('Redis getNumber failed:', err);
+      return 0;
+    }
+  }
+
   async del(key) {
     try {
       await this.ensureConnection();

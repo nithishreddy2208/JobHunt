@@ -74,17 +74,10 @@ export const recommendJobs = async (req, res) => {
 
     const jobs = await aiService.searchJobsByEmbedding(embedding);
 
-    const llm = await aiService.generateWithLlm({
-      system: 'Return ONLY valid JSON. Provide short reasons for top job matches.',
-      user: `Return JSON: { recommendations: [{ jobId, title, reason }] } for these jobs: ${JSON.stringify(jobs)}`,
-      fallback: { recommendations: [] },
-      parseJson: true
-    });
-
     const payload = {
       jobs,
-      ai: llm.value,
-      aiMeta: llm.ok ? { provider: llm.provider || 'llm', ok: true } : { provider: 'llm', ok: false, error: llm.error },
+      ai: null,
+      aiMeta: { provider: 'llm', ok: true, skipped: true },
       success: true
     };
     await redisService.setJson(cacheKey, payload, TTL);
@@ -118,9 +111,13 @@ export const analyzeResume = async (req, res) => {
     logCache(cacheKey, false);
 
     const llm = await aiService.generateWithLlm({
-      system: 'You are an expert resume reviewer. Return ONLY valid JSON: { extractedSkills:[], missingSkills:[], suggestions:[] }',
-      user: resumeText,
-      fallback: { extractedSkills: [], missingSkills: [], suggestions: [] }
+      system: 'You are an expert resume reviewer. Output ONLY a single JSON object with keys extractedSkills (array of strings), missingSkills (array of strings), suggestions (array of strings). Include 5-10 extractedSkills taken from the resume, 3-7 missingSkills typical for the role, and 3-5 short actionable suggestions. Do not include any keys outside the schema. Do not include markdown or prose.',
+      user: `Resume:\n${resumeText}`,
+      fallback: { extractedSkills: [], missingSkills: [], suggestions: [] },
+      numPredict: 800,
+      temperature: 0.2,
+      timeoutMs: 45000,
+      format: 'json'
     });
 
     const payload = {
@@ -199,10 +196,11 @@ export const interviewPrep = async (req, res) => {
   try {
     const { role: roleFromBody, jobId } = req.body || {};
     let role = String(roleFromBody || '').trim();
+    let job = null;
 
-    if (!role && jobId) {
-      const job = await Job.findById(jobId).lean();
-      role = String(job?.title || '').trim();
+    if (jobId) {
+      job = await Job.findById(jobId).lean();
+      if (!role) role = String(job?.title || '').trim();
     }
 
     if (!role) {
@@ -210,14 +208,19 @@ export const interviewPrep = async (req, res) => {
       role = String(user?.profile?.bio || '').trim();
     }
 
-    if (!role) {
+    if (!role && !job) {
       return res.status(400).json({
         success: false,
         message: 'role is required (or pass jobId, or set profile.bio to your target role)'
       });
     }
 
-    const cacheKey = `jobhunt:ai:interview_prep:${req.userId}:${role}`;
+    // Prefer job-scoped cache (populated by the prewarm worker) when jobId is given.
+    // Falls back to a per-user+role key for free-form role queries.
+    const cacheKey = jobId
+      ? `jobhunt:ai:interview_prep:job:${jobId}`
+      : `jobhunt:ai:interview_prep:${req.userId}:${role}`;
+
     const cached = await redisService.getJson(cacheKey);
     if (cached) {
       logCache(cacheKey, true);
@@ -225,10 +228,19 @@ export const interviewPrep = async (req, res) => {
     }
     logCache(cacheKey, false);
 
+    // Live compute. Use richer job context if we have a job; else use role string.
+    const userPrompt = job
+      ? `Job posting:\nTitle: ${job.title}\nDescription: ${job.description}\nRequirements: ${(job.requirements || []).join(', ')}\nJob Type: ${job.jobType}\nExperience: ${job.experienceLevel}`
+      : `Role: ${role}`;
+
     const llm = await aiService.generateWithLlm({
-      system: 'Return ONLY valid JSON: { questions: [{ question, suggestedAnswer }] }',
-      user: `Role: ${role}`,
-      fallback: { questions: [] }
+      system: 'You are an interview coach. Output ONLY a single JSON object with key questions, an array of exactly 5 objects each with keys question (string) and suggestedAnswer (string, 2-3 sentences). Tailor the questions to the given context. No keys outside the schema, no markdown, no prose.',
+      user: userPrompt,
+      fallback: { questions: [] },
+      numPredict: 800,
+      temperature: 0.4,
+      timeoutMs: 45000,
+      format: 'json'
     });
 
     const payload = {

@@ -410,6 +410,17 @@ LLM_TIMEOUT_MS=60000
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-1.5-flash-latest
 AI_CACHE_TTL_SECONDS=900
+
+# Freemium limits (FREE tier only; PRO users bypass)
+AI_FREE_DAILY_LIMIT=3
+APPLICATION_FREE_DAILY_LIMIT=5
+
+# BullMQ workers
+WORKERS_INLINE=true
+JOB_WORKER_CONCURRENCY=2
+RESUME_WORKER_CONCURRENCY=2
+AI_WORKER_CONCURRENCY=1
+
 ```
 
 ### 5️⃣ Run the server
@@ -425,18 +436,127 @@ npm run dev
 
 All AI endpoints are mounted under `/api/ai`.
 
-* `POST /api/ai/analyze-resume` (auth)
-* `POST /api/ai/generate-cover-letter` (auth)
-* `POST /api/ai/interview-prep` (auth)
-* `POST /api/ai/recommend-jobs` (auth)
-* `POST /api/ai/search`
+* `POST /api/ai/analyze-resume` (auth, daily-limited for FREE)
+* `POST /api/ai/generate-cover-letter` (auth, daily-limited for FREE)
+* `POST /api/ai/interview-prep` (auth, daily-limited for FREE) — accepts `{ jobId }` for job-tailored questions or `{ role }` for free-form
+* `POST /api/ai/recommend-jobs` (auth, daily-limited for FREE)
+* `POST /api/ai/search` — semantic job search, **always free and unrestricted**
+
+---
+
+## 💳 Pro Subscription (Freemium)
+
+Freemium access control with a future-payment-ready architecture. No payment gateway is wired yet — the upgrade endpoint simulates a purchase; swapping in Razorpay/Stripe later only touches `services/subscription.service.js`.
+
+### Tiers
+
+| Feature | FREE | PRO |
+|---|---|---|
+| Semantic job search | ✅ unrestricted | ✅ unrestricted |
+| AI endpoints (resume/cover letter/interview/recommend) | 3 calls / day | Unlimited |
+| Job applications | 5 / day | Unlimited |
+
+### Endpoints
+
+* `POST /api/user/upgrade` (auth) — flips the user to PRO (accepts optional `{ paymentRef }` for future payment integration)
+* `GET /api/user/subscription` (auth) — returns `{ subscription, isPro, proSince }`
+
+### Data model
+
+`User` has three new fields:
+
+```js
+subscription: { type: String, enum: ['FREE', 'PRO'], default: 'FREE' }
+isPro:        { type: Boolean, default: false }
+proSince:     { type: Date, default: null }
+```
+
+### How limiting works
+
+Daily counters live in Redis with a 24h TTL (per user, per UTC day):
+
+```
+jobhunt:ai:usage:userId:<id>:date:YYYY-MM-DD
+jobhunt:application:count:userId:<id>:date:YYYY-MM-DD
+```
+
+Middleware `aiUsageLimit` and `applicationLimit` (in `middleware/subscription.js`) use `INCR` atomically and return `429` when exceeded. PRO users bypass both. If Redis is unreachable, the middleware **fails open** (never blocks a user due to infra issues).
+
+### Response headers
+
+On every throttled AI / application call:
+
+```
+X-RateLimit-Limit: 3
+X-RateLimit-Remaining: 2
+```
+
+---
+
+## ⚙️ Background Jobs (BullMQ)
+
+Heavy work (embeddings, LLM calls) runs asynchronously in BullMQ workers so API responses stay fast. Queues are backed by the same Redis instance used for caching (works with local Redis or Upstash).
+
+### Queues & workers
+
+| Queue | Producer | Worker | What it does |
+|---|---|---|---|
+| `job` | `postJob` controller | `workers/job.worker.js` | Generates job embedding → invalidates recommendation cache → enqueues interview-prep prewarm for that job |
+| `resume` | profile update controller | `workers/resume.worker.js` | Generates resume embedding → invalidates stale analysis cache → enqueues resume-analysis prewarm |
+| `ai` | `resume.worker` + `job.worker` | `workers/ai.worker.js` | `prewarmResumeAnalysis`, `prewarmJobInterviewPrep` — runs the LLM and caches results where the controllers read them |
+
+### Pre-computed caches
+
+Once a worker finishes, these keys are populated so subsequent HTTP requests return instantly:
+
+```
+jobhunt:ai:resume_analysis:<userId>
+jobhunt:ai:interview_prep:job:<jobId>
+```
+
+### Reliability
+
+* **Retries:** 3 attempts with exponential backoff (2s, 4s, 8s)
+* **Auto-cleanup:** completed jobs removed after 1h, failed after 24h
+* **Logging:** every queue and worker logs `added`, `start`, `done`, `fail` with attempt number
+* **Crash safety:** jobs stay in Redis if a worker dies and are picked up when it restarts
+
+### Running workers
+
+**Development (default):** workers run inline in the API process — no extra terminal needed.
+
+```bash
+npm run dev
+```
+
+**Production (scale workers independently):** set `WORKERS_INLINE=false` and run a dedicated worker process.
+
+```bash
+# terminal 1 – API only
+WORKERS_INLINE=false npm start
+
+# terminal 2+ – one or more worker processes
+npm run worker
+```
+
+### Smoke-test the AI worker
+
+```bash
+node scripts/test-ai-queue.js
+```
+
+Expected log in the backend terminal:
+
+```
+[queue:ai]  added id=1 name=noop
+[worker:ai] start id=1 name=noop
+[worker:ai] done  id=1 result={"ok":true,"data":{...}}
+```
 
 ---
 
 ## 🔮 Future Enhancements
 
-* Resume upload feature (with security scanning)
-* Job recommendation system
 * Email notifications
 * Real-time chat between recruiter and candidate
 * Advanced job filtering

@@ -54,12 +54,12 @@ export class AiService {
       .slice(0, topK);
   }
 
-  async generateWithLlm({ system, user, fallback, parseJson = true }) {
+  async generateWithLlm({ system, user, fallback, parseJson = true, numPredict, temperature, timeoutMs, format }) {
     const prompt = [system ? `SYSTEM:\n${system}` : '', `USER:\n${user}`]
       .filter(Boolean)
       .join('\n\n');
 
-    const res = await llmService.generateResponse(prompt);
+    const res = await llmService.generateResponse(prompt, { numPredict, temperature, timeoutMs, format });
     if (!res?.success) {
       return {
         ok: false,

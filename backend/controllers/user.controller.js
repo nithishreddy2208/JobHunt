@@ -7,6 +7,8 @@ import getDataUri from "../utils/datauri.js";
 import cloudinary from "../utils/cloudinary.js";
 import { scanFile } from "../utils/clamav.js";
 import { extractPdfText } from "../utils/pdfText.js";
+import { subscriptionService } from "../services/subscription.service.js";
+import { enqueueResumeProcessing } from "../queues/resume.queue.js";
 
 export const register = async (req, res) => {
     try {
@@ -133,6 +135,8 @@ export const update = async (req, res) => {
             }
         }
 
+        let newResumeUrl = null;
+
         if (req.file) {
             const file = req.file;
 
@@ -155,6 +159,7 @@ export const update = async (req, res) => {
 
             user.profile.resume = cloudResponse.secure_url;
             user.profile.resumeName = file.originalname;
+            newResumeUrl = cloudResponse.secure_url;
 
             try {
                 const extracted = await extractPdfText(file.buffer);
@@ -164,19 +169,6 @@ export const update = async (req, res) => {
             } catch (err) {
                 console.error('Resume text extraction failed:', err?.message || err);
             }
-        }
-
-        if (user.profile.resumeText && user.profile.resumeText.trim()) {
-            const resumeText = user.profile.resumeText;
-
-            setImmediate(async () => {
-                try {
-                    const embedding = await getEmbedding(resumeText);
-                    await User.updateOne({ _id: userId }, { $set: { 'profile.embedding': embedding } });
-                } catch (err) {
-                    console.error('Resume embedding generation failed:', err?.message || err);
-                }
-            });
         }
 
         if (name) user.name = name;
@@ -189,12 +181,59 @@ export const update = async (req, res) => {
 
         await user.save();
 
+        const needsEmbedding = newResumeUrl ||
+            (user.profile.resumeText && user.profile.resumeText.trim() && (!user.profile.embedding || user.profile.embedding.length === 0));
+
+        if (needsEmbedding) {
+            try {
+                await enqueueResumeProcessing({ userId, resumeUrl: newResumeUrl });
+            } catch (err) {
+                console.error('Resume processing enqueue failed:', err?.message || err);
+            }
+        }
+
         return res.status(200).json({
             message: "Profile updated successfully",
             success: true,
             user
         });
 
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            message: "Internal server error",
+            success: false
+        });
+    }
+};
+
+export const upgradeToPro = async (req, res) => {
+    try {
+        const { paymentRef } = req.body || {};
+
+        const user = await subscriptionService.upgradeToPro(req.userId, { paymentRef });
+
+        return res.status(200).json({
+            message: "Upgraded to PRO successfully",
+            success: true,
+            user
+        });
+    } catch (error) {
+        console.log(error);
+        return res.status(500).json({
+            message: "Upgrade failed",
+            success: false
+        });
+    }
+};
+
+export const getSubscriptionStatus = async (req, res) => {
+    try {
+        const status = await subscriptionService.getStatus(req.userId);
+        if (!status) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+        return res.status(200).json({ success: true, ...status });
     } catch (error) {
         console.log(error);
         return res.status(500).json({
