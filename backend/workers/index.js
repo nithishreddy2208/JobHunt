@@ -1,21 +1,17 @@
-import { startJobWorker } from './job.worker.js';
-import { startResumeWorker } from './resume.worker.js';
-import { startAiWorker } from './ai.worker.js';
+import { startTasksWorker, stopTasksWorker } from './tasks.worker.js';
 
-let workers = [];
-
+/**
+ * Single worker for the single shared queue.
+ *
+ * Why: each BullMQ Worker holds an open Redis connection that runs blocking
+ * BZPOPMIN polls. On Upstash (per-command billing) every extra worker
+ * multiplies idle command usage. One worker dispatches by job.name.
+ */
 export const startAllWorkers = () => {
-  if (workers.length > 0) return workers;
-  workers = [startJobWorker(), startResumeWorker(), startAiWorker()];
-  console.log('[workers] started job, resume, ai');
-  return workers;
+  startTasksWorker();
+  console.log('[workers] tasks worker started');
 };
 
 export const stopAllWorkers = async () => {
-  await Promise.all(
-    workers.map((w) =>
-      w.close().catch((err) => console.error('[workers] close error:', err?.message || err))
-    )
-  );
-  workers = [];
+  await stopTasksWorker();
 };

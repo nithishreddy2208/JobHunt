@@ -12,13 +12,21 @@ The goal of this project is to build a scalable job portal that simplifies the r
 
 ### Frontend
 
-* React.js
-* Axios
+* React 18 + Vite
+* Tailwind CSS + shadcn/ui (Radix primitives)
+* TanStack Query (server state)
+* react-hook-form + Zod (forms & validation)
+* react-router-dom v6 (nested routing)
+* lucide-react (icons), sonner (toasts)
+* Web Speech API (voice mock interview)
+* Axios (with `withCredentials`)
 
 ### Backend
 
-* Node.js
-* Express.js
+* Node.js + Express.js
+* BullMQ (background workers, single shared queue)
+* Multer + ClamAV + Cloudinary (secure uploads)
+* `@xenova/transformers` (local MiniLM embeddings)
 
 ### Database
 
@@ -58,17 +66,23 @@ The application is designed with scalability in mind so that additional features
 
 ### For Job Seekers
 
-* Create and manage user profiles
-* Browse and search job listings
-* Apply for jobs online
-* Track applied jobs
+* Personalized **dashboard** at `/` with quick links to every seeker workflow
+* Profile management with PDF resume upload + photo
+* Browse, prefix-autocomplete, and **semantic-search** job listings
+* One-click apply with daily-limit awareness (FREE tier)
+* Track applications and statuses
+* AI workflows: resume analysis, cover letter, interview prep, recommendations
+* **Voice mock interview** with live transcription and AI scoring
 
 ### For Recruiters
 
-* Company registration
-* Post new job openings
-* Manage job listings
-* View applicants for posted jobs
+* Dedicated **/admin/\*** dashboard area with sidebar + topbar layout
+* Statistics cards, recent jobs, recent applicants on `/admin/dashboard`
+* `/admin/post-job` — react-hook-form + Zod, inline company creation
+* `/admin/jobs` — search, filter, paginate posted jobs
+* `/admin/jobs/:id/applicants` — shortlist / accept / reject with instant updates
+* `/admin/profile` — name, bio, profile photo, default company
+* Company registration (inline create from PostJob and Profile)
 
 ### General Features
 
@@ -79,10 +93,11 @@ The application is designed with scalability in mind so that additional features
 
 ### AI Features
 
-* Hybrid LLM support (**Ollama local** → **Gemini** → graceful fallback)
+* Hybrid LLM support: **OpenRouter** (primary) → **Ollama local** (fallback) with retries and JSON mode for analyze-resume / interview-prep
 * Resume text extraction and storage for AI workflows
 * Local semantic search embeddings (MiniLM via `@xenova/transformers`)
-* AI endpoints for resume analysis, cover letter generation, interview preparation, and job recommendations
+* AI endpoints for resume analysis, cover letter generation, interview preparation, job recommendations, and **mock-interview evaluation**
+* Pre-computed caching: BullMQ workers warm resume-analysis and interview-prep results so HTTP requests return instantly
 
 ---
 
@@ -403,23 +418,26 @@ REDIS_URL=redis://localhost:6379
 JOB_CACHE_TTL_SECONDS=300
 JOB_TRIE_REFRESH_MS=600000
 
-# AI / LLM
+# AI / LLM (OpenRouter primary, Ollama fallback)
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=llama3
+OLLAMA_MODEL=phi
 LLM_TIMEOUT_MS=60000
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-1.5-flash-latest
 AI_CACHE_TTL_SECONDS=900
+
+# Cloudinary (resume + photo uploads)
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
 
 # Freemium limits (FREE tier only; PRO users bypass)
 AI_FREE_DAILY_LIMIT=3
 APPLICATION_FREE_DAILY_LIMIT=5
 
-# BullMQ workers
+# BullMQ workers (single consolidated tasks worker)
 WORKERS_INLINE=true
-JOB_WORKER_CONCURRENCY=2
-RESUME_WORKER_CONCURRENCY=2
-AI_WORKER_CONCURRENCY=1
+TASKS_WORKER_CONCURRENCY=2
 
 ```
 
@@ -439,8 +457,28 @@ All AI endpoints are mounted under `/api/ai`.
 * `POST /api/ai/analyze-resume` (auth, daily-limited for FREE)
 * `POST /api/ai/generate-cover-letter` (auth, daily-limited for FREE)
 * `POST /api/ai/interview-prep` (auth, daily-limited for FREE) — accepts `{ jobId }` for job-tailored questions or `{ role }` for free-form
+* `POST /api/ai/mock-interview/evaluate` (auth, daily-limited for FREE) — single-call scoring of all answers (per-answer score, strengths, improvements, overall summary)
 * `POST /api/ai/recommend-jobs` (auth, daily-limited for FREE)
 * `POST /api/ai/search` — semantic job search, **always free and unrestricted**
+
+### LLM provider configuration
+
+The LLM service tries **OpenRouter first**, then falls back to a local **Ollama** model. Configure either or both:
+
+```bash
+# Primary
+OPENROUTER_API_KEY=sk-or-...
+OPENROUTER_MODEL=meta-llama/llama-3.1-8b-instruct
+
+# Fallback
+OLLAMA_URL=http://localhost:11434
+OLLAMA_MODEL=phi
+
+LLM_TIMEOUT_MS=60000
+AI_CACHE_TTL_SECONDS=900
+```
+
+Failed/empty LLM responses are **never cached**, so transient provider errors won't poison the cache.
 
 ---
 
@@ -495,15 +533,15 @@ X-RateLimit-Remaining: 2
 
 ## ⚙️ Background Jobs (BullMQ)
 
-Heavy work (embeddings, LLM calls) runs asynchronously in BullMQ workers so API responses stay fast. Queues are backed by the same Redis instance used for caching (works with local Redis or Upstash).
+Heavy work (embeddings, LLM calls) runs asynchronously in BullMQ so API responses stay fast. **All background tasks share a single queue and a single worker** to minimize Redis command usage (important on Upstash's command-metered free tier). Backed by the same Redis instance used for caching.
 
-### Queues & workers
+### Single shared queue / worker
 
-| Queue | Producer | Worker | What it does |
+| Queue | Worker | Job names | What it does |
 |---|---|---|---|
-| `job` | `postJob` controller | `workers/job.worker.js` | Generates job embedding → invalidates recommendation cache → enqueues interview-prep prewarm for that job |
-| `resume` | profile update controller | `workers/resume.worker.js` | Generates resume embedding → invalidates stale analysis cache → enqueues resume-analysis prewarm |
-| `ai` | `resume.worker` + `job.worker` | `workers/ai.worker.js` | `prewarmResumeAnalysis`, `prewarmJobInterviewPrep` — runs the LLM and caches results where the controllers read them |
+| `tasks` | `workers/tasks.worker.js` | `job-embedding`, `resume-processing`, `prewarm-resume-analysis`, `prewarm-interview-prep` | Generates embeddings, invalidates stale caches, runs LLM prewarms, populates result caches |
+
+The legacy `queues/{job,resume,ai}.queue.js` files re-export their `enqueue*` helpers from the shared `tasks.queue` so existing call sites keep working unchanged.
 
 ### Pre-computed caches
 
@@ -523,35 +561,84 @@ jobhunt:ai:interview_prep:job:<jobId>
 
 ### Running workers
 
-**Development (default):** workers run inline in the API process — no extra terminal needed.
+**Development (default):** inline workers are **disabled by default** in dev to prevent Upstash command explosion from nodemon hot-reloads leaking BullMQ connections. Set `WORKERS_INLINE=true` if you want them in-process.
 
 ```bash
-npm run dev
+npm run dev          # API only, no inline workers
+# or, in a second terminal, run the worker explicitly:
+npm run worker
 ```
 
-**Production (scale workers independently):** set `WORKERS_INLINE=false` and run a dedicated worker process.
+**Production:** keep `WORKERS_INLINE=false` and run the worker as its own process.
 
 ```bash
-# terminal 1 – API only
-WORKERS_INLINE=false npm start
+# terminal 1 – API
+npm start
 
 # terminal 2+ – one or more worker processes
 npm run worker
 ```
 
-### Smoke-test the AI worker
+---
 
-```bash
-node scripts/test-ai-queue.js
-```
+## 🧑‍💼 Recruiter Dashboard (`/admin/*`)
 
-Expected log in the backend terminal:
+A dedicated, role-gated area for recruiters with its own layout (collapsible sidebar + topbar). The global navbar is suppressed on `/admin/*` to avoid a double header. Authenticated recruiters who land on `/` are auto-redirected to `/admin/dashboard`.
 
-```
-[queue:ai]  added id=1 name=noop
-[worker:ai] start id=1 name=noop
-[worker:ai] done  id=1 result={"ok":true,"data":{...}}
-```
+### Routes
+
+| Path | Page |
+|---|---|
+| `/admin/dashboard` | Stats cards, recent jobs |
+| `/admin/post-job` | Create a new job (react-hook-form + Zod) |
+| `/admin/jobs` | Manage posted jobs (search / filter / paginate) |
+| `/admin/jobs/:id/applicants` | View & action applicants |
+| `/admin/profile` | Recruiter profile, photo, default company |
+
+### Architecture
+
+* **`RecruiterProtectedRoute`** — anon → `/login`, job-seeker → `/`, recruiter → render
+* **`RecruiterLayout`** — responsive sidebar + topbar with `<Outlet />`
+* **`hooks/recruiter/useRecruiterQueries.js`** — centralized TanStack Query hooks (`useMyJobs`, `useCreateJob`, `useApplicants`, `useUpdateApplicationStatus`, `useCompanies`, `useCreateCompany`, `useUpdateRecruiterProfile`) with a shared `recruiterKeys` map for consistent invalidations
+* **`api/company.api.js`** — `companyApi.list/byId/create/update`
+* **Reusable primitives** — `StatCard`, `Skeleton`, `EmptyState`, `ConfirmDialog`
+
+### Backend tweaks for the dashboard
+
+* `application.model` — added `'shortlisted'` to the status enum
+* `application.controller.updateStatus` — accepts `'shortlisted'`
+* `user.controller.update` — handles profile photo uploads via a `kind=photo` body flag (uploads to `jobhunt/avatars`, sets `profile.photo`) without touching the existing resume-upload flow
+
+---
+
+## 🎙️ Voice Mock Interview
+
+A voice-driven interview practice flow at `/mock-interview`.
+
+### How it works
+
+1. User picks a role.
+2. The frontend uses the **Web Speech API** (`useSpeechRecognition` hook) for continuous recognition with interim results, plus `SpeechSynthesis` to read the question aloud.
+3. The user records each answer; the live transcript is captured.
+4. On submit, all answers are sent to **`POST /api/ai/mock-interview/evaluate`** in a single request.
+5. The backend scores every answer in **one LLM call** and returns per-answer score + strengths + improvements + an overall summary.
+6. The result dashboard renders the breakdown.
+
+The `LLM_TIMEOUT_MS` env var is honored (no hardcoded timeout), and failed/empty LLM responses are never cached.
+
+---
+
+## 📄 Resume PDF Delivery (Cloudinary free-tier workaround)
+
+Cloudinary's free tier blocks **inline** PDF delivery from `/image/upload/`. To make resume links open reliably:
+
+1. **Recommended:** in Cloudinary Console → **Settings → Security**, uncheck **"Restricted media types: PDF and ZIP files"**. One-click fix for all existing files.
+2. The backend also ships a **proxy** with a defensive workaround:
+   * `GET /api/user/resume` — streams the requesting user's own resume
+   * `GET /api/application/:id/resume` — recruiter-scoped, gated by "this recruiter owns the parent job"
+   * Both rewrite the URL to `…/image/upload/fl_attachment/…`, buffer the bytes, validate the `%PDF-` magic header, and re-stamp the response as `Content-Type: application/pdf` with `Content-Disposition: inline`.
+
+The frontend Profile and Applicants pages link through the proxy, so PDFs render in a viewer tab regardless of whether you've flipped the Cloudinary setting.
 
 ---
 

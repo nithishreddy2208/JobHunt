@@ -6,7 +6,8 @@ import {
   generateCoverLetter,
   interviewPrep,
   recommendJobs,
-  semanticJobSearch
+  semanticJobSearch,
+  evaluateMockInterview
 } from '../controllers/ai.controller.js';
 
 const router = express.Router();
@@ -19,5 +20,6 @@ router.post('/recommend-jobs', authentication, aiUsageLimit, recommendJobs);
 router.post('/analyze-resume', authentication, aiUsageLimit, analyzeResume);
 router.post('/generate-cover-letter', authentication, aiUsageLimit, generateCoverLetter);
 router.post('/interview-prep', authentication, aiUsageLimit, interviewPrep);
+router.post('/mock-interview/evaluate', authentication, aiUsageLimit, evaluateMockInterview);
 
 export default router;

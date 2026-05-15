@@ -14,12 +14,10 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
     "@xenova/transformers": "^2.17.2",
     "bcrypt": "^6.0.0",
-    "bullmq": "^5.21.2",
-    "ioredis": "^5.4.1",
     "body-parser": "^2.2.2",
+    "bullmq": "^5.21.2",
     "clamscan": "^2.4.0",
     "cloudinary": "^2.9.0",
     "cookie-parser": "^1.4.7",
@@ -28,6 +26,7 @@
     "ejs": "^4.0.1",
     "express": "^5.2.1",
     "fs": "^0.0.1-security",
+    "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.2.4",
     "multer": "^2.1.1",

@@ -1,8 +1,8 @@
-import { geminiService } from './gemini.service.js';
+import { openRouterService } from './openrouter.service.js';
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'phi';
-const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 10000;
+const TIMEOUT_MS = Number(process.env.LLM_TIMEOUT_MS) || 200000;
 const NUM_PREDICT = Number(process.env.OLLAMA_NUM_PREDICT) || 100;
 const TEMPERATURE = Number.isFinite(Number(process.env.OLLAMA_TEMPERATURE))
   ? Number(process.env.OLLAMA_TEMPERATURE)
@@ -140,26 +140,52 @@ export class LlmService {
       return { success: false, message: 'AI response unavailable' };
     }
 
-    const startedAt = Date.now();
-    let ollamaError = null;
     const opts = { numPredict, temperature, timeoutMs, format };
+    let openRouterError = null;
+    let ollamaError = null;
 
+    // -------- 1) Primary: OpenRouter --------
+    if (process.env.OPEN_ROUTER_API_KEY) {
+      const orStart = Date.now();
+      try {
+        const res = await openRouterService.generateJson({ system: '', user: p });
+        if (!res?.ok) throw new Error(res?.data?.error || res?.data?.message || 'OpenRouter request failed');
+        const text = res?.data?.text || '';
+        if (!text) throw new Error('OpenRouter returned empty response');
+
+        // OpenRouter call is non-streaming here; if caller asked for stream,
+        // emit the full text once so downstream code that consumes onToken still works.
+        if (stream && typeof onToken === 'function') onToken(text);
+
+        console.log(`[llm] provider=openrouter ms=${Date.now() - orStart} ok=true`);
+        return { success: true, provider: 'openrouter', text };
+      } catch (err) {
+        openRouterError = err?.message || String(err);
+        console.log(`[llm] provider=openrouter ms=${Date.now() - orStart} ok=false err=${openRouterError}`);
+      }
+    } else {
+      openRouterError = 'OPEN_ROUTER_API_KEY not set';
+    }
+
+    // -------- 2) Fallback: Ollama --------
+    const ollamaStart = Date.now();
     try {
       const text = stream
         ? await callOllamaStream(p, onToken, opts)
         : await callOllamaNonStream(p, opts);
 
-      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=true`);
+      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - ollamaStart} ok=true`);
       return { success: true, provider: 'ollama', model: OLLAMA_MODEL, text };
     } catch (err) {
       ollamaError = err?.message || String(err);
-      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=false err=${ollamaError}`);
+      console.log(`[llm] provider=ollama model=${OLLAMA_MODEL} ms=${Date.now() - ollamaStart} ok=false err=${ollamaError}`);
 
+      // If streaming attempt failed mid-flight, retry without streaming once.
       if (stream) {
         try {
           const text = await callOllamaNonStream(p, opts);
           if (typeof onToken === 'function') onToken(text);
-          console.log(`[llm] provider=ollama-nonstream-fallback model=${OLLAMA_MODEL} ms=${Date.now() - startedAt} ok=true`);
+          console.log(`[llm] provider=ollama-nonstream-fallback model=${OLLAMA_MODEL} ms=${Date.now() - ollamaStart} ok=true`);
           return { success: true, provider: 'ollama', model: OLLAMA_MODEL, text };
         } catch (err2) {
           ollamaError = err2?.message || String(err2);
@@ -167,31 +193,10 @@ export class LlmService {
       }
     }
 
-    if (process.env.GEMINI_API_KEY) {
-      const geminiStart = Date.now();
-      try {
-        const res = await geminiService.generateJson({ system: '', user: p });
-        if (!res?.ok) throw new Error(res?.data?.error || res?.data?.message || 'Gemini request failed');
-        const text = res?.data?.text || '';
-        if (!text) throw new Error('Gemini returned empty response');
-
-        console.log(`[llm] provider=gemini ms=${Date.now() - geminiStart} ok=true`);
-        return { success: true, provider: 'gemini', text };
-      } catch (err) {
-        const geminiError = err?.message || String(err);
-        console.log(`[llm] provider=gemini ms=${Date.now() - geminiStart} ok=false err=${geminiError}`);
-        return {
-          success: false,
-          message: 'AI response unavailable',
-          details: { ollamaError, geminiError }
-        };
-      }
-    }
-
     return {
       success: false,
       message: 'AI response unavailable',
-      details: { ollamaError }
+      details: { openRouterError, ollamaError }
     };
   }
 }

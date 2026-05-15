@@ -50,7 +50,34 @@ export const closeBullConnection = async () => {
 
 export const defaultJobOptions = {
   attempts: 3,
-  backoff: { type: 'exponential', delay: 2000 },
-  removeOnComplete: { age: 3600, count: 1000 },
-  removeOnFail: { age: 24 * 3600, count: 1000 }
+  backoff: { type: 'exponential', delay: 5000 },
+  // Aggressive cleanup keeps job hashes small => smaller LRANGE on stalled checks
+  removeOnComplete: { age: 3600, count: 50 },
+  removeOnFail: { age: 24 * 3600, count: 100 }
+};
+
+/**
+ * Worker options tuned for Upstash (per-command billing).
+ *
+ * Defaults (BAD for Upstash):
+ *   drainDelay: 5      -> blocking BZPOPMIN re-issued every 5s when idle
+ *   stalledInterval: 30000 -> stalled-check every 30s (3 commands each)
+ *   lockDuration: 30000    -> lock renew every 15s for in-flight jobs
+ *
+ * Tuned (~30x fewer commands while idle):
+ *   drainDelay: 60     -> 1 blocking poll/min instead of 12/min
+ *   stalledInterval: 300000 -> stalled-check every 5min
+ *   lockDuration: 300000    -> lock renew every 2.5min (jobs must finish in <5min,
+ *                              fine for our embedding + LLM tasks at 45s timeout)
+ *   concurrency: 1     -> minimize parallel lock-renewal streams
+ *
+ * Override per-worker only if a job genuinely runs longer than lockDuration/2.
+ */
+export const lowTrafficWorkerOptions = {
+  concurrency: 1,
+  drainDelay: 60,
+  stalledInterval: 300_000,
+  lockDuration: 300_000,
+  // Keep maxStalledCount low so we don't keep re-running broken jobs
+  maxStalledCount: 1
 };

@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 
 import { connectDb } from './config/db.js';
 import userRoutes from "./routes/user.routes.js";
@@ -20,6 +21,20 @@ import { initClamAV } from './utils/clamav.js';
 dotenv.config();
 
 const app = express();
+
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin) return cb(null, true); // allow non-browser clients (curl, Postman)
+        if (allowedOrigins.includes(origin)) return cb(null, true);
+        return cb(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true
+}));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -64,12 +79,22 @@ const startServer = async () => {
 
         llmService.warmup().catch(() => {});
 
-        if ((process.env.WORKERS_INLINE || 'true').toLowerCase() !== 'false') {
+        // Workers are OFF in dev unless WORKERS_INLINE=true is set explicitly.
+        // Reason: nodemon hot-reload leaks blocking BZPOPMIN connections to Upstash
+        // for ~minutes after each restart, multiplying billed commands.
+        // In production, default ON (single dedicated worker process is also fine -> set WORKERS_INLINE=false and run `node worker.js`).
+        const isProd = process.env.NODE_ENV === 'production';
+        const workersInlineDefault = isProd ? 'true' : 'false';
+        const workersInline = (process.env.WORKERS_INLINE || workersInlineDefault).toLowerCase() === 'true';
+
+        if (workersInline) {
             try {
                 startAllWorkers();
             } catch (err) {
                 console.error('[workers] failed to start inline:', err?.message || err);
             }
+        } else {
+            console.log('[workers] inline workers DISABLED (set WORKERS_INLINE=true to enable, or run `node worker.js` in a separate process)');
         }
 
     } catch (error) {

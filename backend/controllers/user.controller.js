@@ -80,7 +80,13 @@ export const login = async (req, res) => {
         }
         const jwtData = { userId: user._id, userRole: user.role };
         const token = jwt.sign(jwtData, process.env.SECRET_KEY, { expiresIn: '1d' });
-        return res.status(200).cookie("token", token, { httpOnly: true, secure: true, maxAge: 24 * 60 * 60 * 1000 }).json({
+        const isProd = process.env.NODE_ENV === 'production';
+        return res.status(200).cookie("token", token, {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? 'none' : 'lax',
+            maxAge: 24 * 60 * 60 * 1000
+        }).json({
             message: "Login Successfull",
             user,
             success: true
@@ -97,7 +103,13 @@ export const login = async (req, res) => {
 
 export const logout = async (req, res) => {
     try {
-        return res.status(200).cookie("token", "", { maxAge: 0, httpOnly: true, secure: true }).json({
+        const isProd = process.env.NODE_ENV === 'production';
+        return res.status(200).cookie("token", "", {
+            maxAge: 0,
+            httpOnly: true,
+            secure: isProd,
+            sameSite: isProd ? 'none' : 'lax'
+        }).json({
             message: "Logout successfull",
             success: true
         });
@@ -136,6 +148,7 @@ export const update = async (req, res) => {
         }
 
         let newResumeUrl = null;
+        const uploadKind = String(req.body?.kind || 'resume').toLowerCase();
 
         if (req.file) {
             const file = req.file;
@@ -152,22 +165,32 @@ export const update = async (req, res) => {
 
             const fileUri = getDataUri(file);
 
-            const cloudResponse = await cloudinary.uploader.upload(fileUri.content, {
-                folder: "jobhunt/resumes",
-                resource_type: "auto"
-            });
+            if (uploadKind === 'photo') {
+                // Profile photo upload (recruiter / job-seeker avatar).
+                const cloudResponse = await cloudinary.uploader.upload(fileUri.content, {
+                    folder: "jobhunt/avatars",
+                    resource_type: "image"
+                });
+                user.profile.photo = cloudResponse.secure_url;
+            } else {
+                // Default: resume upload (existing behavior).
+                const cloudResponse = await cloudinary.uploader.upload(fileUri.content, {
+                    folder: "jobhunt/resumes",
+                    resource_type: "auto"
+                });
 
-            user.profile.resume = cloudResponse.secure_url;
-            user.profile.resumeName = file.originalname;
-            newResumeUrl = cloudResponse.secure_url;
+                user.profile.resume = cloudResponse.secure_url;
+                user.profile.resumeName = file.originalname;
+                newResumeUrl = cloudResponse.secure_url;
 
-            try {
-                const extracted = await extractPdfText(file.buffer);
-                if (extracted) {
-                    user.profile.resumeText = extracted;
+                try {
+                    const extracted = await extractPdfText(file.buffer);
+                    if (extracted) {
+                        user.profile.resumeText = extracted;
+                    }
+                } catch (err) {
+                    console.error('Resume text extraction failed:', err?.message || err);
                 }
-            } catch (err) {
-                console.error('Resume text extraction failed:', err?.message || err);
             }
         }
 
@@ -224,6 +247,66 @@ export const upgradeToPro = async (req, res) => {
             message: "Upgrade failed",
             success: false
         });
+    }
+};
+
+// Cloudinary's free tier blocks inline PDF delivery from /image/upload/.
+// Inserting the `fl_attachment` flag tells Cloudinary to serve the file with
+// Content-Disposition: attachment, which bypasses the restriction. We then
+// re-stamp the response as inline application/pdf so the browser renders it
+// in a viewer tab instead of forcing a download.
+const withFlAttachment = (url) => {
+    if (typeof url !== 'string' || !url) return url;
+    if (url.includes('/fl_attachment/')) return url;
+    return url.replace('/image/upload/', '/image/upload/fl_attachment/');
+};
+
+export const streamResumePdf = async (resumeUrl, resumeName, res) => {
+    if (!resumeUrl) {
+        return res.status(404).json({ success: false, message: 'No resume on file' });
+    }
+
+    const fetchUrl = withFlAttachment(resumeUrl);
+    const upstream = await fetch(fetchUrl);
+    if (!upstream.ok) {
+        return res.status(502).json({
+            success: false,
+            message: `Failed to fetch resume (${upstream.status})`
+        });
+    }
+
+    // Buffer the bytes so we can sanity-check we actually got a PDF before
+    // forwarding to the client. Resumes are small (a few hundred KB), so
+    // buffering is fine and avoids partial-stream errors.
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    const looksLikePdf = buffer.length >= 5 && buffer.slice(0, 5).toString('ascii') === '%PDF-';
+
+    if (!looksLikePdf) {
+        return res.status(502).json({
+            success: false,
+            message: 'Upstream did not return a PDF. The file may be restricted by Cloudinary.'
+        });
+    }
+
+    const filename = (resumeName || 'resume.pdf').replace(/[\r\n"]/g, '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.end(buffer);
+};
+
+export const getResume = async (req, res) => {
+    try {
+        const user = await User.findById(req.userId)
+            .select('profile.resume profile.resumeName')
+            .lean();
+        await streamResumePdf(user?.profile?.resume, user?.profile?.resumeName, res);
+    } catch (error) {
+        console.log('getResume error:', error?.message || error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: 'Failed to load resume' });
+        }
     }
 };
 

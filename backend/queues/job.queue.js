@@ -1,15 +1,11 @@
-import { Queue } from 'bullmq';
-import { getBullConnection, defaultJobOptions } from '../config/queue.js';
+import { tasksQueue } from './tasks.queue.js';
 
-export const JOB_QUEUE_NAME = 'job';
-
-export const jobQueue = new Queue(JOB_QUEUE_NAME, {
-  connection: getBullConnection(),
-  defaultJobOptions
-});
+// Kept for backwards compat with existing imports.
+export const JOB_QUEUE_NAME = 'tasks';
+export const jobQueue = tasksQueue;
 
 export const enqueueJobEmbedding = async (jobId) => {
-  const job = await jobQueue.add('generateEmbedding', { jobId: String(jobId) });
-  console.log(`[queue:job] added id=${job.id} name=generateEmbedding jobId=${jobId}`);
+  const job = await tasksQueue.add('generateEmbedding', { jobId: String(jobId) });
+  console.log(`[queue] added id=${job.id} name=generateEmbedding jobId=${jobId}`);
   return job.id;
 };

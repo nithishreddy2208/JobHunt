@@ -1,5 +1,6 @@
 import { Application } from "../models/application.model.js";
 import { Job } from "../models/job.model.js";
+import { streamResumePdf } from "./user.controller.js";
 
 export const applyJob = async (req, res) => {
     try {
@@ -153,7 +154,7 @@ export const updateStatus = async (req, res) => {
             });
         }
 
-        const allowedStatuses = ['pending', 'accepted', 'declined'];
+        const allowedStatuses = ['pending', 'shortlisted', 'accepted', 'declined'];
 
         if (!allowedStatuses.includes(status.toLowerCase())) {
             return res.status(400).json({
@@ -201,5 +202,38 @@ export const updateStatus = async (req, res) => {
             message: "Internal server error",
             success: false
         });
+    }
+};
+
+// Recruiter-scoped resume proxy. Verifies the requesting recruiter owns the
+// parent job, then streams the applicant's resume PDF through the shared
+// Cloudinary-bypass helper.
+export const getApplicantResume = async (req, res) => {
+    try {
+        const applicationId = req.params.id;
+        if (!applicationId) {
+            return res.status(400).json({ success: false, message: 'Application id is required' });
+        }
+
+        const application = await Application
+            .findById(applicationId)
+            .populate({ path: 'job', select: 'created_by' })
+            .populate({ path: 'applicant', select: 'profile.resume profile.resumeName' });
+
+        if (!application || !application.job) {
+            return res.status(404).json({ success: false, message: 'Application not found' });
+        }
+
+        if (String(application.job.created_by) !== String(req.userId)) {
+            return res.status(403).json({ success: false, message: 'Not authorized to view this resume' });
+        }
+
+        const profile = application.applicant?.profile || {};
+        await streamResumePdf(profile.resume, profile.resumeName, res);
+    } catch (error) {
+        console.log('getApplicantResume error:', error?.message || error);
+        if (!res.headersSent) {
+            res.status(500).json({ success: false, message: 'Failed to load resume' });
+        }
     }
 };

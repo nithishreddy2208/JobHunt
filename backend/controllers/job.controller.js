@@ -104,7 +104,19 @@ export const suggestJobTitles = async (req, res) => {
             });
         }
 
-        const suggestions = jobSearchService.suggest(prefix, { limit });
+        const items = jobSearchService.suggest(prefix, { limit });
+
+        // The trie stores objects ({ title, jobId }); the frontend expects unique strings.
+        const seen = new Set();
+        const suggestions = [];
+        for (const it of items) {
+            const t = (it?.title || '').trim();
+            if (!t) continue;
+            const key = t.toLowerCase();
+            if (seen.has(key)) continue;
+            seen.add(key);
+            suggestions.push(t);
+        }
 
         return res.status(200).json({
             suggestions,
@@ -135,17 +147,23 @@ export const getAllJobs = async (req, res) => {
             return res.status(200).json(cached);
         }
 
+        // Escape any regex metachars so user input like "c++" or "(senior)" doesn't blow up.
+        const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
         let query = {};
 
         if (keyword) {
-            query.$or = [
-                { title: { $regex: `^${keyword}`, $options: "i" } },
-                { description: { $regex: `^${keyword}`, $options: "i" } }
-            ];
+            const kw = escapeRegex(keyword.trim());
+            // Word-boundary match against TITLE only. \b ensures the term marks the start of a word,
+            // so "sof" matches "Software Engineer" / "Senior Software Eng" but doesn't leak random
+            // jobs whose description happens to contain common substrings. Description-text matching
+            // is delegated to semantic search (/ai/search), which is purpose-built for that.
+            query.title = { $regex: `\\b${kw}`, $options: "i" };
         }
 
         if (location) {
-            query.location = { $regex: `^${location}`, $options: "i" };
+            const loc = escapeRegex(location.trim());
+            query.location = { $regex: loc, $options: "i" };
         }
 
         if (jobType) {

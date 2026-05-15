@@ -39,8 +39,17 @@ const safeJsonParse = (text) => {
 };
 
 export class AiService {
-  async searchJobsByEmbedding(queryEmbedding, { topK = 10 } = {}) {
+  async searchJobsByEmbedding(queryEmbedding, { topK = 10, minScore } = {}) {
     if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0) return [];
+
+    // Cosine threshold below which a match is considered too weak to surface.
+    // MiniLM-L6-v2 + short queries against longer job docs typically yield 0.35-0.55
+    // for genuine matches and 0.0-0.2 for unrelated. 0.3 is the sweet spot that filters
+    // nonsense queries while keeping legitimate matches. Tune via AI_SEARCH_MIN_SCORE.
+    const envFloor = Number(process.env.AI_SEARCH_MIN_SCORE);
+    const threshold = Number.isFinite(minScore)
+      ? minScore
+      : (Number.isFinite(envFloor) ? envFloor : 0.3);
 
     const docs = await Job.find(
       { embedding: { $type: 'array' } },
@@ -49,7 +58,7 @@ export class AiService {
 
     return docs
       .map((j) => ({ ...j, score: cosineSimilarity(queryEmbedding, j.embedding) }))
-      .filter((j) => Number.isFinite(j.score) && j.score > 0)
+      .filter((j) => Number.isFinite(j.score) && j.score >= threshold)
       .sort((a, b) => b.score - a.score)
       .slice(0, topK);
   }

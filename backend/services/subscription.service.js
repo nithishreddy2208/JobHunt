@@ -14,12 +14,15 @@ import { User } from '../models/user.model.js';
 
 class SubscriptionService {
   async getStatus(userId) {
-    const user = await User.findById(userId).select('subscription isPro proSince').lean();
+    // Return the full user (minus password) so the frontend's session probe (`/user/subscription`)
+    // can hydrate `useAuth().user` on every page load, not only after login.
+    const user = await User.findById(userId).select('-password').lean();
     if (!user) return null;
     return {
       subscription: user.subscription || 'FREE',
       isPro: Boolean(user.isPro),
-      proSince: user.proSince || null
+      proSince: user.proSince || null,
+      user
     };
   }
 
