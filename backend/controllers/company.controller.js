@@ -1,4 +1,5 @@
 import { Company } from '../models/company.model.js'
+import { ReadModels } from '../db/index.js';
 
 export const registerCompany = async (req, res) => {
     try {
@@ -39,7 +40,8 @@ export const registerCompany = async (req, res) => {
 export const getCompany = async (req, res) => {
     try {
         const created_by = req.userId;
-        const companies = await Company.find({ created_by });
+        // List read -> replica.
+        const companies = await ReadModels.Company.find({ created_by }).lean();
 
         if (companies.length === 0) {
             return res.status(404).json({
@@ -64,7 +66,8 @@ export const getCompany = async (req, res) => {
 export const getCompanyById = async (req, res) => {
     try {
         const companyId = req.params.id;
-        const company = await Company.findById(companyId);
+        // Detail read -> replica.
+        const company = await ReadModels.Company.findById(companyId).lean();
         if (!company) {
             return res.status(404).json({
                 message: "Not found",

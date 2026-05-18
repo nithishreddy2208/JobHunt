@@ -307,6 +307,123 @@ User Search →
 
 ---
 
+## 🗄️ MongoDB Replica-set Architecture (Read/Write Split)
+
+JobHunt uses a **MongoDB Atlas replica set** (one primary + N secondaries) and splits traffic between two Mongoose connections to scale reads independently of writes.
+
+### Two-connection model
+
+| Connection | Read preference | Used for |
+|---|---|---|
+| **Primary** (`db/primaryConnection.js`) | `primary` | All writes; reads that need read-your-write consistency (auth, existence pre-checks, post-write reads) |
+| **Read replica** (`db/readReplicaConnection.js`) | `secondaryPreferred` | Browse jobs, recruiter analytics, applicants list, applied-jobs list, AI candidate ranking, semantic search embedding scan |
+
+Both connections target the **same Atlas cluster** — Atlas exposes the entire replica set via the SRV URI; the driver discovers all nodes and routes per-connection based on the configured read preference.
+
+### Module layout
+
+```
+backend/db/
+├── primaryConnection.js     # mongoose.connect() + readPreference: 'primary'
+├── readReplicaConnection.js # mongoose.createConnection() + readPreference: 'secondaryPreferred'
+├── models.js                # registers schemas on read conn; exports ReadModels proxy
+└── index.js                 # connectAll(), getDbHealth(), re-exports ReadModels
+```
+
+Existing models in `backend/models/*.js` continue to work unchanged — they live on the primary connection, just like before. Read-heavy controllers opt in by importing `ReadModels`:
+
+```js
+import { ReadModels } from '../db/index.js';
+
+// Browse jobs -> replica
+const jobs = await ReadModels.Job.find(query).lean();
+
+// Recruiter analytics -> replica
+const myJobs = await ReadModels.Job.find({ created_by: req.userId }).lean();
+
+// Embedding scan (heaviest read) -> replica
+const docs = await ReadModels.Job.find({ embedding: { $type: 'array' } }).lean();
+```
+
+### Automatic fallback
+
+`ReadModels` is a Proxy that checks the read connection's `readyState` on every access. If the replica is disconnected (or the initial connect failed), reads transparently fall back to the primary connection's models. **No API ever crashes because the replica is unavailable** — the worst case is reads served by the primary.
+
+### Failover handling
+
+Mongoose's underlying driver runs SDAM (Server Discovery and Monitoring) on both connections. If the Atlas primary steps down (planned maintenance, election, or outage), the driver detects the new primary within seconds and re-routes writes automatically. `serverSelectionTimeoutMS` (default 10s) caps how long the driver waits for a suitable server during a failover.
+
+### Connection pooling
+
+Each Mongoose connection maintains its own pool of TCP connections to MongoDB. The two pools are independent, so heavy analytics reads can't starve writes:
+
+```bash
+DB_POOL_SIZE_MAX=20      # writes
+DB_POOL_SIZE_MIN=2
+DB_READ_POOL_SIZE_MAX=20 # reads (defaults to DB_POOL_SIZE_MAX)
+DB_READ_POOL_SIZE_MIN=2
+```
+
+### Logging
+
+Both connections log connect / disconnect / reconnect / error events with prefixes:
+
+```
+[db:primary] connected host=ac-xxxxx-shard-00-00.mongodb.net db=jobhunt readPreference=primary
+[db:replica] connected host=ac-xxxxx-shard-00-01.mongodb.net readPreference=secondaryPreferred
+[db:replica] disconnected (reads will fall back to primary)
+```
+
+### Health endpoint
+
+```
+GET /api/health/db
+```
+
+Returns the live state of both connections:
+
+```json
+{
+  "success": true,
+  "primary": {
+    "ok": true,
+    "readyState": 1,
+    "host": "ac-xxxxx-shard-00-00.mongodb.net",
+    "db": "jobhunt",
+    "readPreference": "primary"
+  },
+  "replica": {
+    "ok": true,
+    "readyState": 1,
+    "host": "ac-xxxxx-shard-00-01.mongodb.net",
+    "readPreference": "secondaryPreferred",
+    "fallbackActive": false
+  }
+}
+```
+
+When `replica.ok` is false, `fallbackActive` flips to true — useful for dashboards, alerts, and load-balancer health probes. The endpoint returns 503 only if the **primary** is down (replica being down is a soft degradation, not an outage).
+
+### Read-your-write consistency
+
+Secondaries lag the primary by a small replication delay (typically <100ms on Atlas). Endpoints that need to read the freshest possible data — duplicate-email checks during register, existence checks before a write, loading the actor right after their own write — deliberately stay on the primary connection (the default `Job.find(...)` etc.). Only latency-tolerant analytics-style reads are routed to `ReadModels`.
+
+### Indexing
+
+Pre-existing indexes accelerate the queries we now run on the replica:
+
+```js
+jobSchema.index({ createdAt: -1 });
+jobSchema.index({ created_by: 1, createdAt: -1 });   // recruiter "my jobs"
+jobSchema.index({ jobType: 1, createdAt: -1 });
+jobSchema.index({ location: 1, jobType: 1, createdAt: -1 });
+jobSchema.index({ title: 'text', description: 'text' });
+```
+
+Indexes are replicated to all secondaries automatically.
+
+---
+
 ## �️ Secure Resume Upload (Multer + ClamAV + Cloudinary)
 
 To keep uploads safe and production-ready, the backend uses:
@@ -366,15 +483,25 @@ Upload →
 backend
 │
 ├── config
-│   └── db.js
+│   └── db.js                        # back-compat shim -> db/index.js
+│
+├── db
+│   ├── primaryConnection.js         # writes + read-your-write reads
+│   ├── readReplicaConnection.js     # secondaryPreferred reads
+│   ├── models.js                    # ReadModels proxy with auto-fallback
+│   └── index.js                     # connectAll(), getDbHealth()
 │
 ├── controllers
 │
-├── models
+├── models                           # schemas (used by both connections)
 │
-├── routes
+├── routes                           # incl. health.routes.js -> /api/health/db
 │
 ├── middleware
+│
+├── services
+│
+├── queues / workers                 # BullMQ
 │
 ├── utils
 │
@@ -412,11 +539,21 @@ npm install
 
 ```
 PORT=8000
-MONGO_URI=your_mongodb_connection_string
+MONGO_URI=your_mongodb_connection_string   # Atlas SRV URI: mongodb+srv://...
 SECRET_KEY=your_secret_key
 REDIS_URL=redis://localhost:6379
 JOB_CACHE_TTL_SECONDS=300
 JOB_TRIE_REFRESH_MS=600000
+
+# MongoDB replica-set tuning (see "Replica-set Architecture" below)
+READ_PREFERENCE=secondaryPreferred
+DB_POOL_SIZE_MAX=20
+DB_POOL_SIZE_MIN=2
+DB_TIMEOUT_MS=10000
+DB_SOCKET_TIMEOUT_MS=45000
+# Optional: dedicated pool size for the read connection
+# DB_READ_POOL_SIZE_MAX=20
+# DB_READ_POOL_SIZE_MIN=2
 
 # AI / LLM (OpenRouter primary, Ollama fallback)
 OPENROUTER_API_KEY=

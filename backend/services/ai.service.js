@@ -1,4 +1,5 @@
 import { Job } from '../models/job.model.js';
+import { ReadModels } from '../db/index.js';
 import { llmService } from './llm.service.js';
 
 const cosineSimilarity = (a, b) => {
@@ -51,7 +52,9 @@ export class AiService {
       ? minScore
       : (Number.isFinite(envFloor) ? envFloor : 0.3);
 
-    const docs = await Job.find(
+    // Embedding scan is the heaviest read in the system. Route to the
+    // read replica so it never contends with primary write load.
+    const docs = await ReadModels.Job.find(
       { embedding: { $type: 'array' } },
       { embedding: 1, title: 1, description: 1, location: 1, jobType: 1, company: 1 }
     ).populate('company').lean();

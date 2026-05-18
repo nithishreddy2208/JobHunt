@@ -1,5 +1,6 @@
 import { Job } from '../models/job.model.js';
 import { Company } from '../models/company.model.js';
+import { ReadModels } from '../db/index.js';
 import { jobSearchService } from '../services/jobSearch.service.js';
 import { redisService } from '../services/redis.service.js';
 import { getEmbedding } from '../utils/embedding.js';
@@ -170,13 +171,17 @@ export const getAllJobs = async (req, res) => {
             query.jobType = jobType
         }
 
-        const jobs = await Job.find(query)
-            .populate("company")
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limitNum);
-
-        const totalJobs = await Job.countDocuments(query);
+        // Read-heavy listing: route to the read-replica connection.
+        // Falls back to primary automatically if the replica is unhealthy.
+        const [jobs, totalJobs] = await Promise.all([
+            ReadModels.Job.find(query)
+                .populate("company")
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limitNum)
+                .lean(),
+            ReadModels.Job.countDocuments(query)
+        ]);
 
         const payload = {
             jobs,
@@ -202,9 +207,11 @@ export const getAllJobs = async (req, res) => {
 export const getAdminJobs = async (req, res) => {
     try {
         const adminId = req.userId;
-        const jobs = await Job.find({ created_by: adminId })
+        // Recruiter dashboard analytics read -> replica.
+        const jobs = await ReadModels.Job.find({ created_by: adminId })
             .populate("company")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
         if (jobs.length === 0) {
             return res.status(404).json({
                 message: "Jobs not found",

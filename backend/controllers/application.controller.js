@@ -1,5 +1,6 @@
 import { Application } from "../models/application.model.js";
 import { Job } from "../models/job.model.js";
+import { ReadModels } from "../db/index.js";
 import { streamResumePdf } from "./user.controller.js";
 
 export const applyJob = async (req, res) => {
@@ -61,7 +62,8 @@ export const getAppliedJobs = async (req, res) => {
 
         const skip = (page - 1) * limit;
 
-        const applications = await Application.find({ applicant: userId })
+        // Job-seeker's applied-jobs list -> replica read.
+        const applications = await ReadModels.Application.find({ applicant: userId })
             .populate({
                 path: 'job',
                 populate: { path: 'company' }
@@ -70,7 +72,7 @@ export const getAppliedJobs = async (req, res) => {
             .skip(skip)
             .limit(limit);
 
-        const total = await Application.countDocuments({ applicant: userId });
+        const total = await ReadModels.Application.countDocuments({ applicant: userId });
 
         return res.status(200).json({
             applications,
@@ -115,7 +117,8 @@ export const getApplicants = async (req, res) => {
             });
         }
 
-        const applicants = await Application.find({ job: jobId })
+        // Recruiter applicant listing -> replica read.
+        const applicants = await ReadModels.Application.find({ job: jobId })
             .populate({
                 path: 'applicant',
                 select: '-password'
@@ -124,7 +127,7 @@ export const getApplicants = async (req, res) => {
             .skip(skip)
             .limit(limit);
 
-        const total = await Application.countDocuments({ job: jobId });
+        const total = await ReadModels.Application.countDocuments({ job: jobId });
 
         return res.status(200).json({
             applicants,
