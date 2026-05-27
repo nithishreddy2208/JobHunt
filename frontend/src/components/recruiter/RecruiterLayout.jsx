@@ -9,7 +9,9 @@ import {
   LogOut,
   Menu,
   X,
-  Sparkles
+  Sparkles,
+  Wand2,
+  Mail
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -20,6 +22,8 @@ const NAV_ITEMS = [
   { to: '/admin/post-job', label: 'Post Job', icon: PlusCircle },
   { to: '/admin/jobs', label: 'Manage Jobs', icon: Briefcase },
   { to: '/admin/jobs', label: 'Applicants', icon: Users, hint: 'Pick a job to view' },
+  { to: '/admin/jd-optimizer', label: 'JD Optimizer', icon: Wand2, ai: true },
+  { to: '/admin/email-composer', label: 'AI Emails', icon: Mail, ai: true },
   { to: '/admin/profile', label: 'Profile', icon: UserCircle }
 ];
 
@@ -37,7 +41,7 @@ const Initials = ({ name }) => {
   );
 };
 
-const SidebarLink = ({ to, label, icon: Icon, onClick }) => (
+const SidebarLink = ({ to, label, icon: Icon, ai, onClick }) => (
   <NavLink
     to={to}
     onClick={onClick}
@@ -52,7 +56,12 @@ const SidebarLink = ({ to, label, icon: Icon, onClick }) => (
     }
   >
     <Icon className="h-4 w-4" />
-    <span>{label}</span>
+    <span className="flex-1">{label}</span>
+    {ai && (
+      <span className="rounded-full bg-accent/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-accent">
+        AI
+      </span>
+    )}
   </NavLink>
 );
 
@@ -106,8 +115,8 @@ export default function RecruiterLayout() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map(({ to, label, icon }) => (
-            <SidebarLink key={label} to={to} label={label} icon={icon} onClick={closeDrawer} />
+          {NAV_ITEMS.map(({ to, label, icon, ai }) => (
+            <SidebarLink key={label} to={to} label={label} icon={icon} ai={ai} onClick={closeDrawer} />
           ))}
         </nav>
 

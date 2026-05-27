@@ -24,6 +24,9 @@ import PostJobPage from '@/pages/admin/PostJob';
 import ManageJobsPage from '@/pages/admin/ManageJobs';
 import ApplicantsPage from '@/pages/admin/Applicants';
 import AdminProfilePage from '@/pages/admin/AdminProfile';
+import JobAnalyticsPage from '@/pages/admin/JobAnalytics';
+import JdOptimizerPage from '@/pages/admin/JdOptimizer';
+import EmailComposerPage from '@/pages/admin/EmailComposer';
 
 export default function App() {
   const location = useLocation();
@@ -67,6 +70,9 @@ export default function App() {
             <Route path="post-job" element={<PostJobPage />} />
             <Route path="jobs" element={<ManageJobsPage />} />
             <Route path="jobs/:id/applicants" element={<ApplicantsPage />} />
+            <Route path="jobs/:id/analytics" element={<JobAnalyticsPage />} />
+            <Route path="jd-optimizer" element={<JdOptimizerPage />} />
+            <Route path="email-composer" element={<EmailComposerPage />} />
             <Route path="profile" element={<AdminProfilePage />} />
           </Route>
 

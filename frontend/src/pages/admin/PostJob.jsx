@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Loader2, PlusCircle, Building2, Sparkles } from 'lucide-react';
+import { Loader2, PlusCircle, Building2, Sparkles, Wand2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,6 +14,8 @@ import {
   useCreateCompany,
   useCreateJob
 } from '@/hooks/recruiter/useRecruiterQueries';
+import { useOptimizeJd } from '@/hooks/recruiter/useRecruiterAi';
+import { AiBadge } from '@/components/recruiter/ai/AiPrimitives';
 
 // ─── Validation schema ──────────────────────────────────────────────────────
 const jobSchema = z.object({
@@ -53,10 +56,13 @@ export default function PostJobPage() {
   const [companyDialogOpen, setCompanyDialogOpen] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
 
+  const optimizeJd = useOptimizeJd();
+
   const {
     register,
     handleSubmit,
     setValue,
+    getValues,
     formState: { errors, isSubmitting }
   } = useForm({
     resolver: zodResolver(jobSchema),
@@ -121,10 +127,14 @@ export default function PostJobPage() {
             </Field>
 
             <Field
-              label="Description"
+              label={
+                <span className="flex items-center gap-2">
+                  Description <AiBadge>AI optimize</AiBadge>
+                </span>
+              }
               htmlFor="description"
               error={errors.description?.message}
-              hint="Describe responsibilities, team, and any unique perks."
+              hint="Describe responsibilities, team, and any unique perks. Click 'Optimize with AI' to rewrite professionally."
             >
               <textarea
                 id="description"
@@ -133,6 +143,42 @@ export default function PostJobPage() {
                 placeholder="What will the candidate be doing?"
                 {...register('description')}
               />
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={optimizeJd.isPending}
+                  onClick={async () => {
+                    const { title, description, requirements } = getValues();
+                    if (!description || description.trim().length < 20) {
+                      toast.error('Add at least 20 characters of description first.');
+                      return;
+                    }
+                    try {
+                      const res = await optimizeJd.mutateAsync({
+                        title,
+                        description,
+                        requirements: (requirements || '')
+                          .split(',')
+                          .map((r) => r.trim())
+                          .filter(Boolean)
+                      });
+                      const opt = res?.optimized;
+                      if (opt?.optimizedDescription) {
+                        setValue('description', opt.optimizedDescription, { shouldValidate: true });
+                        if (Array.isArray(opt.requirements) && opt.requirements.length) {
+                          setValue('requirements', opt.requirements.join(', '), { shouldValidate: true });
+                        }
+                        toast.success('JD optimized');
+                      }
+                    } catch {}
+                  }}
+                >
+                  {optimizeJd.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  Optimize with AI
+                </Button>
+              </div>
             </Field>
 
             <Field

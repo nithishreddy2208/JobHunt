@@ -1,29 +1,8 @@
 import { Job } from '../models/job.model.js';
 import { ReadModels } from '../db/index.js';
 import { llmService } from './llm.service.js';
+import { cosineSimilarity } from '../utils/cosine.js';
 
-const cosineSimilarity = (a, b) => {
-  if (!Array.isArray(a) || !Array.isArray(b)) return 0;
-  if (a.length === 0 || b.length === 0) return 0;
-  if (a.length !== b.length) return 0;
-
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    const x = Number(a[i]);
-    const y = Number(b[i]);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return 0;
-    dot += x * y;
-    na += x * x;
-    nb += y * y;
-  }
-
-  const denom = Math.sqrt(na) * Math.sqrt(nb);
-  if (!denom) return 0;
-  return dot / denom;
-};
 
 const safeJsonParse = (text) => {
   try {

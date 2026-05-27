@@ -9,6 +9,7 @@ import companyRoutes from "./routes/company.routes.js";
 import jobRoutes from "./routes/job.routes.js";
 import applicationRoutes from "./routes/application.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import recruiterAiRoutes from "./routes/recruiterAi.routes.js";
 import healthRoutes from "./routes/health.routes.js";
 
 import { jobSearchService } from './services/jobSearch.service.js';
@@ -46,6 +47,7 @@ app.use('/api/company', companyRoutes);
 app.use('/api/job', jobRoutes);
 app.use('/api/application', applicationRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/ai/recruiter', recruiterAiRoutes);
 app.use('/api/health', healthRoutes);
 
 app.get("/", (req, res) => {

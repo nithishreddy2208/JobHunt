@@ -77,10 +77,13 @@ The application is designed with scalability in mind so that additional features
 ### For Recruiters
 
 * Dedicated **/admin/\*** dashboard area with sidebar + topbar layout
-* Statistics cards, recent jobs, recent applicants on `/admin/dashboard`
-* `/admin/post-job` — react-hook-form + Zod, inline company creation
+* Statistics cards, recent jobs, **AI Tools quick-actions** on `/admin/dashboard`
+* `/admin/post-job` — react-hook-form + Zod, inline company creation, **inline "Optimize with AI"** for the description
 * `/admin/jobs` — search, filter, paginate posted jobs
-* `/admin/jobs/:id/applicants` — shortlist / accept / reject with instant updates
+* `/admin/jobs/:id/applicants` — **AI-ranked candidate list** with match-score rings, semantic / skill / resume sub-scores, matching vs missing skill chips, **AI candidate summary**, **smart auto-shortlist**, **AI email generator**, plus shortlist / accept / reject
+* `/admin/jobs/:id/analytics` — per-job AI analytics: avg match, score distribution, top / missing skills, strongest / weakest candidate
+* `/admin/jd-optimizer` — paste a rough JD, get an ATS-friendly rewrite (description + responsibilities + requirements + change notes)
+* `/admin/email-composer` — generate invite / shortlist / rejection / follow-up emails (editable subject + body + copy)
 * `/admin/profile` — name, bio, profile photo, default company
 * Company registration (inline create from PostJob and Profile)
 
@@ -93,11 +96,18 @@ The application is designed with scalability in mind so that additional features
 
 ### AI Features
 
-* Hybrid LLM support: **OpenRouter** (primary) → **Ollama local** (fallback) with retries and JSON mode for analyze-resume / interview-prep
+* Hybrid LLM support: **OpenRouter** (primary) → **Ollama local** (fallback) with retries and JSON mode for analyze-resume / interview-prep / recruiter AI endpoints
 * Resume text extraction and storage for AI workflows
 * Local semantic search embeddings (MiniLM via `@xenova/transformers`)
-* AI endpoints for resume analysis, cover letter generation, interview preparation, job recommendations, and **mock-interview evaluation**
-* Pre-computed caching: BullMQ workers warm resume-analysis and interview-prep results so HTTP requests return instantly
+* **Job-seeker AI**: resume analysis, cover letter generation, interview preparation, job recommendations, and **mock-interview evaluation**
+* **Recruiter AI suite**:
+  * **Match scoring** — every applicant scored 0-100% per job (cosine on precomputed embeddings + skill-token alignment + resume-quality signal)
+  * **AI candidate summary** — strengths, gaps, role suitability, experience snapshot
+  * **Smart auto-shortlist** — top-N candidates with reason + confidence (no extra LLM call; deterministic from scores)
+  * **JD optimizer** — rewrites rough job descriptions into ATS-friendly copy with structured responsibilities, requirements, and change notes
+  * **Email generator** — invite / shortlist / rejection / follow-up drafts (subject + body)
+  * **Per-job analytics** — totals, avg match, score buckets, top vs missing skills, strongest / weakest candidate
+* Pre-computed caching: BullMQ workers warm resume-analysis and interview-prep results, and every recruiter AI output is Redis-cached on success only — failed / empty LLM responses are **never cached**
 
 ---
 
@@ -562,6 +572,9 @@ OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=phi
 LLM_TIMEOUT_MS=60000
 AI_CACHE_TTL_SECONDS=900
+# Recruiter AI cache TTLs (optional overrides)
+AI_SUMMARY_TTL_SECONDS=86400
+AI_SHORTLIST_TTL_SECONDS=1800
 
 # Cloudinary (resume + photo uploads)
 CLOUDINARY_CLOUD_NAME=
@@ -597,6 +610,30 @@ All AI endpoints are mounted under `/api/ai`.
 * `POST /api/ai/mock-interview/evaluate` (auth, daily-limited for FREE) — single-call scoring of all answers (per-answer score, strengths, improvements, overall summary)
 * `POST /api/ai/recommend-jobs` (auth, daily-limited for FREE)
 * `POST /api/ai/search` — semantic job search, **always free and unrestricted**
+
+### Recruiter AI endpoints
+
+All mounted under `/api/ai/recruiter/*` and gated by `authentication + recruiterOnly`. Job-scoped endpoints additionally enforce ownership (`job.created_by === req.userId`).
+
+* `GET  /api/ai/recruiter/match-score/:jobId` — per-applicant scores (semantic + skills + resume) with matched/missing skill lists, sorted desc
+* `POST /api/ai/recruiter/candidate-summary/:applicationId` — LLM-generated summary, strengths, weaknesses, role-suitability, experience
+* `GET  /api/ai/recruiter/shortlist/:jobId?top=N` — ranked top-N with reason + confidence
+* `GET  /api/ai/recruiter/analytics/:jobId` — totals, avg match, score buckets, top / missing skills, strongest / weakest
+* `POST /api/ai/recruiter/optimize-jd` — `{ title, description, requirements }` → `{ optimizedDescription, responsibilities[], requirements[], improvements[] }`
+* `POST /api/ai/recruiter/generate-email` — `{ type: invitation|shortlist|rejection|followup, candidateName, jobTitle, companyName?, recruiterName?, notes? }` → `{ subject, body }`
+
+Caching keys + TTLs:
+
+```
+jobhunt:ai:recruiter:match:<jobId>          # AI_CACHE_TTL_SECONDS         (default 900s)
+jobhunt:ai:recruiter:summary:<appId>        # AI_SUMMARY_TTL_SECONDS       (default 24h)
+jobhunt:ai:recruiter:shortlist:<jobId>:<N>  # AI_SHORTLIST_TTL_SECONDS     (default 1800s)
+jobhunt:ai:recruiter:analytics:<jobId>      # AI_CACHE_TTL_SECONDS
+jobhunt:ai:recruiter:optimize-jd:<hash>     # AI_CACHE_TTL_SECONDS
+jobhunt:ai:recruiter:email:<hash>           # AI_CACHE_TTL_SECONDS
+```
+
+Match scoring uses precomputed `job.embedding` and `user.profile.embedding` so listing 100s of applicants is sub-second; no embedding work happens at request time.
 
 ### LLM provider configuration
 
@@ -726,18 +763,23 @@ A dedicated, role-gated area for recruiters with its own layout (collapsible sid
 
 | Path | Page |
 |---|---|
-| `/admin/dashboard` | Stats cards, recent jobs |
-| `/admin/post-job` | Create a new job (react-hook-form + Zod) |
+| `/admin/dashboard` | Stats cards, recent jobs, **AI Tools quick-actions** |
+| `/admin/post-job` | Create a new job (react-hook-form + Zod) with **inline AI JD optimize** |
 | `/admin/jobs` | Manage posted jobs (search / filter / paginate) |
-| `/admin/jobs/:id/applicants` | View & action applicants |
+| `/admin/jobs/:id/applicants` | **AI-ranked applicants** with match scores, AI summary modal, auto-shortlist, AI email generator |
+| `/admin/jobs/:id/analytics` | **Per-job AI analytics** (heatmap, top/missing skills, highlights) |
+| `/admin/jd-optimizer` | Paste a rough JD, get an ATS-friendly AI rewrite |
+| `/admin/email-composer` | AI-generated recruiter emails (invite / shortlist / reject / follow-up) |
 | `/admin/profile` | Recruiter profile, photo, default company |
 
 ### Architecture
 
 * **`RecruiterProtectedRoute`** — anon → `/login`, job-seeker → `/`, recruiter → render
-* **`RecruiterLayout`** — responsive sidebar + topbar with `<Outlet />`
-* **`hooks/recruiter/useRecruiterQueries.js`** — centralized TanStack Query hooks (`useMyJobs`, `useCreateJob`, `useApplicants`, `useUpdateApplicationStatus`, `useCompanies`, `useCreateCompany`, `useUpdateRecruiterProfile`) with a shared `recruiterKeys` map for consistent invalidations
-* **`api/company.api.js`** — `companyApi.list/byId/create/update`
+* **`RecruiterLayout`** — responsive sidebar + topbar with `<Outlet />`; AI-tagged sidebar entries for AI-only pages
+* **`hooks/recruiter/useRecruiterQueries.js`** — TanStack Query hooks for CRUD (`useMyJobs`, `useCreateJob`, `useApplicants`, `useUpdateApplicationStatus`, `useCompanies`, `useCreateCompany`, `useUpdateRecruiterProfile`)
+* **`hooks/recruiter/useRecruiterAi.js`** — TanStack Query hooks for the AI suite (`useMatchScores`, `useShortlist`, `useAnalytics`, `useCandidateSummary`, `useOptimizeJd`, `useGenerateEmail`)
+* **`api/recruiterAi.api.js`** — thin Axios wrappers for `/api/ai/recruiter/*`
+* **`components/recruiter/ai/`** — reusable AI primitives (`AiBadge`, `ScoreRing`, `ScoreBar`, `AiSection`), `CandidateSummaryDialog`, `EmailGeneratorDialog`
 * **Reusable primitives** — `StatCard`, `Skeleton`, `EmptyState`, `ConfirmDialog`
 
 ### Backend tweaks for the dashboard
@@ -745,6 +787,8 @@ A dedicated, role-gated area for recruiters with its own layout (collapsible sid
 * `application.model` — added `'shortlisted'` to the status enum
 * `application.controller.updateStatus` — accepts `'shortlisted'`
 * `user.controller.update` — handles profile photo uploads via a `kind=photo` body flag (uploads to `jobhunt/avatars`, sets `profile.photo`) without touching the existing resume-upload flow
+* `controllers/recruiterAi.controller.js` — match scoring, summary, shortlist, analytics, JD optimize, email generate (auth + recruiterOnly + ownership-checked)
+* `utils/cosine.js` — shared cosine similarity + 0..100% mapping used by every ranking surface
 
 ---
 

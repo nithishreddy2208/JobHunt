@@ -1,11 +1,12 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Briefcase, Users, CheckCircle2, ListChecks, ArrowRight, PlusCircle } from 'lucide-react';
+import { Briefcase, Users, CheckCircle2, ListChecks, ArrowRight, PlusCircle, Wand2, Mail, BarChart3 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMyJobs } from '@/hooks/recruiter/useRecruiterQueries';
 import { StatCard, SkeletonRows, EmptyState } from '@/components/recruiter/primitives';
+import { AiBadge } from '@/components/recruiter/ai/AiPrimitives';
 
 const formatDate = (s) => {
   if (!s) return '';
@@ -66,6 +67,38 @@ export default function AdminDashboardPage() {
           </>
         )}
       </div>
+
+      {/* AI Quick actions */}
+      <Card className="border-accent/30 bg-gradient-to-br from-accent/5 via-background to-fuchsia-500/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            AI Tools <AiBadge>Recruiter AI</AiBadge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-3">
+          <Link to="/admin/jd-optimizer" className="group rounded-lg border border-border bg-background p-4 transition hover:border-accent/50 hover:shadow-sm">
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-md bg-accent/10 text-accent">
+              <Wand2 className="h-4 w-4" />
+            </div>
+            <p className="text-sm font-semibold">JD Optimizer</p>
+            <p className="text-xs text-muted-foreground">Rewrite rough JDs into ATS-friendly copy.</p>
+          </Link>
+          <Link to="/admin/email-composer" className="group rounded-lg border border-border bg-background p-4 transition hover:border-accent/50 hover:shadow-sm">
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-md bg-accent/10 text-accent">
+              <Mail className="h-4 w-4" />
+            </div>
+            <p className="text-sm font-semibold">AI Emails</p>
+            <p className="text-xs text-muted-foreground">Generate invite, shortlist, reject, follow-up.</p>
+          </Link>
+          <Link to="/admin/jobs" className="group rounded-lg border border-border bg-background p-4 transition hover:border-accent/50 hover:shadow-sm">
+            <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-md bg-accent/10 text-accent">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <p className="text-sm font-semibold">Match scoring & analytics</p>
+            <p className="text-xs text-muted-foreground">Pick a job to see ranked candidates.</p>
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Recent jobs */}
       <Card>
