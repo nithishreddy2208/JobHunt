@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   PlusCircle,
@@ -15,16 +15,61 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { cn } from '@/lib/utils';
 
+// `match` decides when a sidebar item is highlighted. We do this manually instead
+// of using <NavLink end> because two items historically pointed at /admin/jobs,
+// so NavLink would light both up at the same time. With explicit predicates,
+// every pathname maps to exactly one active item.
 const NAV_ITEMS = [
-  { to: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/admin/post-job', label: 'Post Job', icon: PlusCircle },
-  { to: '/admin/jobs', label: 'Manage Jobs', icon: Briefcase },
-  { to: '/admin/jobs', label: 'Applicants', icon: Users, hint: 'Pick a job to view' },
-  { to: '/admin/jd-optimizer', label: 'JD Optimizer', icon: Wand2, ai: true },
-  { to: '/admin/email-composer', label: 'AI Emails', icon: Mail, ai: true },
-  { to: '/admin/profile', label: 'Profile', icon: UserCircle }
+  {
+    to: '/admin/dashboard',
+    label: 'Dashboard',
+    icon: LayoutDashboard,
+    match: (p) => p === '/admin' || p === '/admin/' || p.startsWith('/admin/dashboard')
+  },
+  {
+    to: '/admin/post-job',
+    label: 'Post Job',
+    icon: PlusCircle,
+    match: (p) => p.startsWith('/admin/post-job')
+  },
+  {
+    to: '/admin/jobs',
+    label: 'Manage Jobs',
+    icon: Briefcase,
+    // Active only on the bare jobs list — NOT on per-job sub-routes.
+    match: (p) => p === '/admin/jobs' || p === '/admin/jobs/'
+  },
+  {
+    to: '/admin/jobs',
+    label: 'Applicants',
+    icon: Users,
+    hint: 'Pick a job to view',
+    // Active when looking at a specific job's applicants/analytics.
+    match: (p) => /^\/admin\/jobs\/[^/]+\/(applicants|analytics)/.test(p)
+  },
+  {
+    to: '/admin/jd-optimizer',
+    label: 'JD Optimizer',
+    icon: Wand2,
+    ai: true,
+    match: (p) => p.startsWith('/admin/jd-optimizer')
+  },
+  {
+    to: '/admin/email-composer',
+    label: 'AI Emails',
+    icon: Mail,
+    ai: true,
+    match: (p) => p.startsWith('/admin/email-composer')
+  },
+  {
+    to: '/admin/profile',
+    label: 'Profile',
+    icon: UserCircle,
+    match: (p) => p.startsWith('/admin/profile')
+  }
 ];
 
 const Initials = ({ name }) => {
@@ -41,19 +86,17 @@ const Initials = ({ name }) => {
   );
 };
 
-const SidebarLink = ({ to, label, icon: Icon, ai, onClick }) => (
-  <NavLink
+const SidebarLink = ({ to, label, icon: Icon, ai, isActive, onClick }) => (
+  <Link
     to={to}
     onClick={onClick}
-    end={to === '/admin/dashboard'}
-    className={({ isActive }) =>
-      cn(
-        'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-        isActive
-          ? 'bg-accent/10 text-accent'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-      )
-    }
+    aria-current={isActive ? 'page' : undefined}
+    className={cn(
+      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+      isActive
+        ? 'bg-accent/10 text-accent'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+    )}
   >
     <Icon className="h-4 w-4" />
     <span className="flex-1">{label}</span>
@@ -62,7 +105,7 @@ const SidebarLink = ({ to, label, icon: Icon, ai, onClick }) => (
         AI
       </span>
     )}
-  </NavLink>
+  </Link>
 );
 
 /**
@@ -73,6 +116,7 @@ const SidebarLink = ({ to, label, icon: Icon, ai, onClick }) => (
 export default function RecruiterLayout() {
   const { user, isPro, logout } = useAuth();
   const [open, setOpen] = useState(false); // mobile drawer
+  const { pathname } = useLocation();
 
   const closeDrawer = () => setOpen(false);
 
@@ -90,7 +134,7 @@ export default function RecruiterLayout() {
       {/* ───────── Sidebar ───────── */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-background transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-card transition-transform lg:static lg:translate-x-0',
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         )}
       >
@@ -115,8 +159,16 @@ export default function RecruiterLayout() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {NAV_ITEMS.map(({ to, label, icon, ai }) => (
-            <SidebarLink key={label} to={to} label={label} icon={icon} ai={ai} onClick={closeDrawer} />
+          {NAV_ITEMS.map(({ to, label, icon, ai, match }) => (
+            <SidebarLink
+              key={label}
+              to={to}
+              label={label}
+              icon={icon}
+              ai={ai}
+              isActive={match ? match(pathname) : false}
+              onClick={closeDrawer}
+            />
           ))}
         </nav>
 
@@ -143,7 +195,7 @@ export default function RecruiterLayout() {
       {/* ───────── Main column ───────── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur lg:px-6">
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-card/80 px-4 backdrop-blur lg:px-6">
           <button
             type="button"
             className="rounded-md p-1.5 hover:bg-muted lg:hidden"
@@ -155,6 +207,7 @@ export default function RecruiterLayout() {
 
           <div className="flex-1" />
 
+          <ThemeToggle />
           <Link to="/admin/post-job">
             <Button variant="accent" size="sm">
               <PlusCircle className="h-4 w-4" /> Post job

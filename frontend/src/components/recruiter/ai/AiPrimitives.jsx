@@ -21,10 +21,10 @@ export const AiBadge = ({ className, children = 'AI', icon = Sparkles }) => {
 // consistent across the dashboard.
 export const scoreTone = (score) => {
   const n = Number(score) || 0;
-  if (n >= 80) return { text: 'text-emerald-600', bg: 'bg-emerald-500', soft: 'bg-emerald-500/10', ring: 'ring-emerald-500/30', label: 'Excellent' };
-  if (n >= 60) return { text: 'text-sky-600', bg: 'bg-sky-500', soft: 'bg-sky-500/10', ring: 'ring-sky-500/30', label: 'Strong' };
-  if (n >= 40) return { text: 'text-amber-600', bg: 'bg-amber-500', soft: 'bg-amber-500/10', ring: 'ring-amber-500/30', label: 'Moderate' };
-  return { text: 'text-rose-600', bg: 'bg-rose-500', soft: 'bg-rose-500/10', ring: 'ring-rose-500/30', label: 'Weak' };
+  if (n >= 80) return { text: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500', soft: 'bg-emerald-500/10', ring: 'ring-emerald-500/30', label: 'Excellent' };
+  if (n >= 60) return { text: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-500', soft: 'bg-sky-500/10', ring: 'ring-sky-500/30', label: 'Strong' };
+  if (n >= 40) return { text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-500', soft: 'bg-amber-500/10', ring: 'ring-amber-500/30', label: 'Moderate' };
+  return { text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-500', soft: 'bg-rose-500/10', ring: 'ring-rose-500/30', label: 'Weak' };
 };
 
 // Circular score ring (no external chart lib — just SVG).

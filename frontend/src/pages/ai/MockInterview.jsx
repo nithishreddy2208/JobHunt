@@ -11,7 +11,9 @@ import {
   Trophy,
   AlertTriangle,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Bot,
+  Gauge
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { aiApi } from '@/api/ai.api';
@@ -19,7 +21,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
+import { ScoreRing, scoreTone } from '@/components/seeker/SeekerPrimitives';
 import { useSpeechRecognition, speak } from '@/hooks/useSpeechRecognition';
+import { cn } from '@/lib/utils';
 
 // Roles offered in the dropdown. Free-form role can be added later if needed.
 const ROLES = [
@@ -56,6 +60,49 @@ const Textarea = ({ className = '', ...props }) => (
   />
 );
 
+// ─── Animated audio waveform (pure CSS, no canvas) ──────────────────────────
+// `active` drives the bounce; when idle the bars sit flat. Heights are
+// deterministic per-bar so it looks like a real equalizer rather than random.
+const BAR_DELAYS = [0, 120, 240, 80, 300, 160, 40, 220, 100, 280, 60, 200];
+const Waveform = ({ active, tone = 'bg-accent', bars = 12 }) => (
+  <div className="flex h-12 items-center justify-center gap-1" aria-hidden>
+    {Array.from({ length: bars }).map((_, i) => (
+      <span
+        key={i}
+        className={cn('w-1 rounded-full', tone, active ? 'wave-bar' : 'opacity-40')}
+        style={{
+          height: active ? '100%' : '20%',
+          animationDelay: `${BAR_DELAYS[i % BAR_DELAYS.length]}ms`
+        }}
+      />
+    ))}
+  </div>
+);
+
+// ─── Mic orb: big circular control with pulsing rings while recording ───────
+const MicOrb = ({ listening, disabled, onStart, onStop }) => (
+  <button
+    type="button"
+    onClick={listening ? onStop : onStart}
+    disabled={disabled}
+    aria-label={listening ? 'Stop recording' : 'Start recording'}
+    className={cn(
+      'relative inline-flex h-24 w-24 items-center justify-center rounded-full text-white shadow-lg transition-all focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/40 disabled:opacity-40',
+      listening
+        ? 'bg-gradient-to-br from-rose-500 to-red-600'
+        : 'bg-gradient-to-br from-accent to-sky-500 hover:scale-105'
+    )}
+  >
+    {listening && (
+      <>
+        <span className="pulse-ring absolute inset-0 rounded-full bg-rose-500/40" />
+        <span className="pulse-ring absolute inset-0 rounded-full bg-rose-500/30" style={{ animationDelay: '0.5s' }} />
+      </>
+    )}
+    {listening ? <MicOff className="relative h-9 w-9" /> : <Mic className="relative h-9 w-9" />}
+  </button>
+);
+
 export default function MockInterviewPage() {
   // ─── flow state ────────────────────────────────────────────────────────────
   const [role, setRole] = useState(ROLES[0]);
@@ -64,6 +111,7 @@ export default function MockInterviewPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState([]); // string[]
   const [finalResult, setFinalResult] = useState(null);
+  const [aiSpeaking, setAiSpeaking] = useState(false); // true while TTS reads the question
 
   // ─── speech recognition ────────────────────────────────────────────────────
   const {
@@ -166,7 +214,11 @@ export default function MockInterviewPage() {
   };
 
   const handleReadQuestion = () => {
-    if (questions[currentIndex]) speak(questions[currentIndex]);
+    if (!questions[currentIndex]) return;
+    speak(questions[currentIndex], {
+      onStart: () => setAiSpeaking(true),
+      onEnd: () => setAiSpeaking(false)
+    });
   };
 
   // ─── derived ───────────────────────────────────────────────────────────────
@@ -282,40 +334,57 @@ export default function MockInterviewPage() {
 
       <Progress value={progressPct} />
 
-      {/* Question card */}
-      <Card className="mt-6">
-        <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0 pb-2">
-          <CardTitle className="text-lg leading-snug">{currentQuestion}</CardTitle>
-          <Button type="button" variant="outline" size="sm" onClick={handleReadQuestion}>
-            <Volume2 className="h-4 w-4" /> Read
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {/* Mic controls */}
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {!listening ? (
-              <Button
-                type="button"
-                variant="accent"
-                onClick={startListening}
-                disabled={!speechSupported}
-              >
-                <Mic className="h-4 w-4" /> Start recording
-              </Button>
-            ) : (
-              <Button type="button" variant="destructive" onClick={stopListening}>
-                <MicOff className="h-4 w-4" /> Stop recording
-              </Button>
-            )}
-            {listening && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-accent">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
+      {/* AI interviewer banner */}
+      <div className="mt-6 flex items-start gap-3 rounded-xl border border-accent/20 bg-gradient-to-br from-accent/10 via-card to-sky-500/5 p-4">
+        <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent/15 text-accent">
+          {aiSpeaking && <span className="pulse-ring absolute inset-0 rounded-full bg-accent/30" />}
+          <Bot className="relative h-5 w-5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-accent">AI Interviewer</span>
+            {aiSpeaking && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-accent">
+                <span className="flex gap-0.5">
+                  <span className="wave-bar h-2.5 w-0.5 rounded-full bg-accent" style={{ animationDelay: '0ms' }} />
+                  <span className="wave-bar h-2.5 w-0.5 rounded-full bg-accent" style={{ animationDelay: '150ms' }} />
+                  <span className="wave-bar h-2.5 w-0.5 rounded-full bg-accent" style={{ animationDelay: '300ms' }} />
                 </span>
-                Listening…
+                Speaking…
               </span>
             )}
+          </div>
+          <p className="text-base font-semibold leading-snug">{currentQuestion}</p>
+        </div>
+        <Button type="button" variant="outline" size="sm" onClick={handleReadQuestion} disabled={aiSpeaking}>
+          <Volume2 className="h-4 w-4" /> {aiSpeaking ? 'Reading' : 'Read'}
+        </Button>
+      </div>
+
+      {/* Mic stage */}
+      <Card className="mt-4">
+        <CardContent className="pt-6">
+          <div className="flex flex-col items-center gap-3">
+            <MicOrb
+              listening={listening}
+              disabled={!speechSupported}
+              onStart={startListening}
+              onStop={stopListening}
+            />
+            <Waveform active={listening} tone={listening ? 'bg-rose-500' : 'bg-accent'} />
+            <p className="text-sm font-medium">
+              {listening ? (
+                <span className="inline-flex items-center gap-1.5 text-rose-600 dark:text-rose-400">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-500 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-rose-500" />
+                  </span>
+                  Listening — speak your answer
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Tap the mic to start recording</span>
+              )}
+            </p>
             <Button
               type="button"
               variant="ghost"
@@ -324,9 +393,8 @@ export default function MockInterviewPage() {
                 resetSpeech();
                 setDraftAnswer('');
               }}
-              className="ml-auto"
             >
-              Clear
+              Clear answer
             </Button>
           </div>
 
@@ -396,8 +464,11 @@ function ResultDashboard({ result, role, questions, answers, onRestart }) {
   const improvements = Array.isArray(result?.improvements) ? result.improvements : [];
   const perQ = Array.isArray(result?.results) ? result.results : [];
 
-  const scoreColor =
-    overall >= 8 ? 'text-emerald-500' : overall >= 5 ? 'text-amber-500' : 'text-destructive';
+  // Confidence = overall (0-10) mapped to a 0-100% readiness score.
+  const confidence = Math.max(0, Math.min(100, Math.round(overall * 10)));
+  const tone = scoreTone(confidence);
+  const answered = answers.filter((a) => a && a.trim()).length;
+  const readiness = confidence >= 80 ? 'Interview ready' : confidence >= 50 ? 'Getting there' : 'Needs practice';
 
   return (
     <>
@@ -413,14 +484,28 @@ function ResultDashboard({ result, role, questions, answers, onRestart }) {
         </Button>
       </header>
 
-      <Card>
-        <CardContent className="flex flex-col items-center gap-2 p-8 text-center">
-          <p className="text-sm uppercase tracking-wider text-muted-foreground">Overall score</p>
-          <p className={`text-6xl font-bold tabular-nums ${scoreColor}`}>
-            {overall}
-            <span className="text-2xl text-muted-foreground">/10</span>
-          </p>
-        </CardContent>
+      {/* Confidence / readiness hero */}
+      <Card className="overflow-hidden">
+        <div className="grid gap-6 bg-gradient-to-br from-accent/10 via-card to-fuchsia-500/5 p-6 sm:grid-cols-[auto_1fr] sm:items-center">
+          <div className="flex justify-center">
+            <ScoreRing value={confidence} size={132} stroke={11} />
+          </div>
+          <div className="text-center sm:text-left">
+            <p className="flex items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:justify-start">
+              <Gauge className="h-3 w-3" /> Confidence score
+            </p>
+            <p className={cn('mt-1 text-2xl font-bold', tone.text)}>{readiness}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              You scored <span className="font-semibold text-foreground">{overall}/10</span> overall and
+              answered {answered} of {questions.length} questions.
+            </p>
+            <div className="mt-4 grid max-w-md grid-cols-3 gap-3 text-center">
+              <MiniStat label="Score" value={`${overall}/10`} />
+              <MiniStat label="Answered" value={`${answered}/${questions.length}`} />
+              <MiniStat label="Confidence" value={`${confidence}%`} tone={tone} />
+            </div>
+          </div>
+        </div>
       </Card>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -482,6 +567,15 @@ function ResultDashboard({ result, role, questions, answers, onRestart }) {
         })}
       </div>
     </>
+  );
+}
+
+function MiniStat({ label, value, tone }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-2.5">
+      <p className={cn('text-lg font-bold tabular-nums', tone?.text)}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+    </div>
   );
 }
 

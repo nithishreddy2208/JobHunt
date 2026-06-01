@@ -139,16 +139,23 @@ export const useSpeechRecognition = ({ lang = 'en-US' } = {}) => {
  * Small helper for the bonus "Read Question" feature. Uses window.speechSynthesis.
  * Safe to call even when unsupported — it just no-ops.
  */
-export const speak = (text, { lang = 'en-US', rate = 1, pitch = 1 } = {}) => {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return;
+export const speak = (text, { lang = 'en-US', rate = 1, pitch = 1, onStart, onEnd } = {}) => {
+  if (typeof window === 'undefined' || !window.speechSynthesis) {
+    onEnd?.();
+    return;
+  }
   try {
     window.speechSynthesis.cancel();
     const utter = new SpeechSynthesisUtterance(String(text || ''));
     utter.lang = lang;
     utter.rate = rate;
     utter.pitch = pitch;
+    // Optional lifecycle callbacks let callers show an "AI speaking" indicator.
+    utter.onstart = () => onStart?.();
+    utter.onend = () => onEnd?.();
+    utter.onerror = () => onEnd?.();
     window.speechSynthesis.speak(utter);
   } catch {
-    /* ignore */
+    onEnd?.();
   }
 };

@@ -5,6 +5,22 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>JobHunt</title>
+    <!--
+      Apply the persisted/system theme BEFORE first paint to avoid a flash of
+      the wrong theme on refresh. Must stay in sync with ThemeProvider's
+      storage key ("jobhunt-theme") and class logic.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('jobhunt-theme');
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var isDark = stored === 'dark' || ((!stored || stored === 'system') && prefersDark);
+          document.documentElement.classList.toggle('dark', isDark);
+          document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

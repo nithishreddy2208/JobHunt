@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 
 export const Card = ({ className, ...props }) => (
-  <div className={cn('rounded-lg border border-border bg-background shadow-sm', className)} {...props} />
+  <div className={cn('rounded-lg border border-border bg-card text-card-foreground shadow-sm', className)} {...props} />
 );
 
 export const CardHeader = ({ className, ...props }) => (

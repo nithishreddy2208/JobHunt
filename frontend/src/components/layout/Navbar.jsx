@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { Briefcase, LogOut, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 import { cn } from '@/lib/utils';
 
 const navItem = ({ isActive }) =>
@@ -30,7 +31,7 @@ export const Navbar = () => {
   const links = isAuthenticated ? (isRecruiter ? recruiterLinks : seekerLinks) : [];
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur">
+    <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur">
       <div className="container flex h-14 items-center justify-between">
         <Link to="/" className="flex items-center gap-2 font-semibold">
           <Briefcase className="h-5 w-5 text-accent" />
@@ -49,6 +50,7 @@ export const Navbar = () => {
         </nav>
 
         <div className="flex items-center gap-2">
+          <ThemeToggle />
           {isAuthenticated ? (
             <>
               {isPro ? (

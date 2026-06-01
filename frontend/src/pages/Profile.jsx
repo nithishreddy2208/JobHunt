@@ -13,8 +13,14 @@ import {
   X,
   Check,
   User as UserIcon,
-  Briefcase
+  Briefcase,
+  Target,
+  CheckCircle2,
+  Circle,
+  Lightbulb,
+  ArrowRight
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { userApi } from '@/api/user.api';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -22,6 +28,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ScoreRing, scoreTone } from '@/components/seeker/SeekerPrimitives';
+import { computeProfileCompletion } from '@/lib/seekerInsights';
+import { cn } from '@/lib/utils';
 
 const initialsOf = (name = '') =>
   name
@@ -116,6 +125,7 @@ export default function ProfilePage() {
   }
 
   const skills = Array.isArray(user.profile?.skills) ? user.profile.skills : [];
+  const completion = computeProfileCompletion(user);
   const hasResume = Boolean(user.profile?.resume);
   // Always open via the backend proxy: it bypasses Cloudinary's free-tier PDF restriction
   // and serves the file with `Content-Disposition: inline` so it renders in-browser.
@@ -124,10 +134,11 @@ export default function ProfilePage() {
   const photo = user.profile?.photo;
 
   return (
-    <div className="container max-w-3xl py-8">
+    <div className={cn('container py-8', editing ? 'max-w-3xl' : 'max-w-5xl')}>
       {/* ============== VIEW MODE ============== */}
       {!editing && (
-        <>
+        <div className="grid gap-4 lg:grid-cols-3 lg:items-start">
+          <div className="space-y-4 lg:col-span-2">
           {/* Hero card */}
           <Card className="overflow-hidden">
             <div className="h-24 bg-gradient-to-r from-accent/30 via-accent/15 to-background" />
@@ -224,7 +235,13 @@ export default function ProfilePage() {
               <EmptyHint label="Upload a PDF resume to unlock AI recommendations and resume analysis." />
             )}
           </Section>
-        </>
+          </div>
+
+          {/* ── Profile strength aside ── */}
+          <aside className="space-y-4 lg:sticky lg:top-20">
+            <ProfileStrength completion={completion} skills={skills} onEdit={() => setEditing(true)} />
+          </aside>
+        </div>
       )}
 
       {/* ============== EDIT MODE ============== */}
@@ -392,3 +409,92 @@ const EmptyHint = ({ label }) => (
     {label}
   </p>
 );
+
+// Profile-strength panel: completion ring, AI-style improvement checklist, and
+// a skills visualization. `completion` comes from computeProfileCompletion.
+const ProfileStrength = ({ completion, skills, onEdit }) => {
+  const tone = scoreTone(completion.percent);
+  const complete = completion.missing.length === 0;
+
+  return (
+    <>
+      <Card className="overflow-hidden">
+        <div className="border-b border-border bg-gradient-to-br from-accent/10 via-card to-fuchsia-500/5 p-5">
+          <div className="flex items-center gap-4">
+            <ScoreRing value={completion.percent} size={72} stroke={7} />
+            <div>
+              <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <Target className="h-3 w-3" /> Profile strength
+              </p>
+              <p className={cn('text-lg font-bold', tone.text)}>{tone.label}</p>
+              <p className="text-xs text-muted-foreground">
+                {complete ? 'Your profile is fully optimized.' : `${completion.missing.length} item${completion.missing.length === 1 ? '' : 's'} left`}
+              </p>
+            </div>
+          </div>
+        </div>
+        <CardContent className="space-y-2 p-5">
+          <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-accent">
+            <Sparkles className="h-3 w-3" /> AI suggestions
+          </p>
+          {complete ? (
+            <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-500/10 p-2.5 text-xs text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 className="h-4 w-4" /> Everything looks great. Keep your resume fresh.
+            </div>
+          ) : (
+            <ul className="space-y-1.5">
+              {completion.missing.map((m) => (
+                <li key={m} className="flex items-start gap-2 text-xs">
+                  <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="text-foreground/80">{m}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button variant="accent" size="sm" className="mt-2 w-full" onClick={onEdit}>
+            <Pencil className="h-3.5 w-3.5" /> Improve profile
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Skills visualization */}
+      <Card>
+        <CardContent className="space-y-3 p-5">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <Sparkles className="h-3 w-3" /> Skills
+            </p>
+            <span className="text-xs text-muted-foreground">{skills.length}</span>
+          </div>
+          {skills.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {skills.map((s, i) => (
+                <span
+                  key={s}
+                  className={cn(
+                    'rounded-full px-2.5 py-1 text-xs font-medium',
+                    i % 3 === 0
+                      ? 'bg-accent/10 text-accent'
+                      : i % 3 === 1
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                      : 'bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-400'
+                  )}
+                >
+                  {s}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">No skills yet — add some to boost matching.</p>
+          )}
+          <Link
+            to="/ai/recommendations"
+            className="inline-flex items-center gap-1 text-xs text-accent hover:underline"
+          >
+            See AI job matches <ArrowRight className="h-3 w-3" />
+          </Link>
+        </CardContent>
+      </Card>
+    </>
+  );
+};

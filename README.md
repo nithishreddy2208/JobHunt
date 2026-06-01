@@ -20,6 +20,7 @@ The goal of this project is to build a scalable job portal that simplifies the r
 * lucide-react (icons), sonner (toasts)
 * Web Speech API (voice mock interview)
 * Axios (with `withCredentials`)
+* **Dark / Light theme** — Tailwind `darkMode: 'class'` driven by CSS variables, with a `ThemeProvider`, animated toggle, system-preference detection, `localStorage` persistence, and no-flicker pre-paint script
 
 ### Backend
 
@@ -823,7 +824,107 @@ The frontend Profile and Applicants pages link through the proxy, so PDFs render
 
 ---
 
-## 🔮 Future Enhancements
+## 🎨 UI/UX, Theming & AI-First Redesign
+
+The entire frontend was redesigned into a modern, AI-first experience with a global dark/light theme.
+
+### Global theme system
+
+* **`darkMode: 'class'`** in `tailwind.config.js`; every color is a CSS variable (`background`, `card`, `foreground`, `muted`, `primary`, `secondary`, `accent`, `destructive`, `border`, `input`, `ring`) mapped via `hsl(var(--token))`.
+* **Light + dark palettes** defined in `src/index.css` (`:root` and `.dark`). Dark mode uses layered navy surfaces (never pure black) for depth.
+* **`components/theme/ThemeProvider.jsx`** — `light | dark | system`, persists to `localStorage` (`jobhunt-theme`), reacts to OS changes, and applies a scoped `.theme-transition` for smooth switching.
+* **`components/theme/ThemeToggle.jsx`** — animated cross-fading sun/moon button, mounted in both the global `Navbar` and the recruiter topbar.
+* **No-flicker** — an inline pre-paint script in `index.html` applies the persisted/system theme before React mounts, so refreshes never flash the wrong theme.
+* **Layered surfaces** — `Card`, seeker primitives, dashboards, sidebar, and topbar use `bg-card`; badges and score tones ship `dark:` variants for correct contrast.
+
+### AI-first JobSeeker pages
+
+* **Dashboard (`/`)** — AI hero, KPI strip, ATS score ring, AI resume insights, job-match insights, application pipeline timeline, AI tools quick-launch, and top recommendations.
+* **Profile** — two-column layout with a sticky **profile-strength panel** (completion ring, AI improvement checklist, skills visualization).
+* **Resume Analysis** — gradient hero with an **ATS-readiness ring**, strengths/gaps cards, and numbered improvement suggestions.
+* **Interview Prep** — gradient hero with numbered Q&A cards separating question vs. suggested answer, plus a "practice by voice" CTA.
+* **Cover Letter** — gradient hero with a copy + **download** output toolbar.
+* **AI Recommendations** — semantic match %, skill-alignment bars, "why this matches" explanations, and skill chips.
+* **Applications** — modern **ATS-style application tracking timeline** with status badges and progress indicators.
+* **Voice Mock Interview** — AI interviewer banner with speaking indicator, pulsing mic orb, animated waveform, and a result **confidence ring** with readiness label + mini-stats.
+
+### Shared primitives
+
+* `components/seeker/SeekerPrimitives.jsx` — `ScoreRing`, `AiBadge`, `AiCard`, `scoreTone`, and layered card surfaces reused across all seeker pages.
+* `lib/seekerInsights.js` — helpers for profile completion, ATS score, recommendation/application summaries, and skill matching.
+
+---
+
+## � Production Deployment
+
+The app is deployed with the **frontend on Vercel** and the **backend on Render**.
+
+| Tier | Platform | URL |
+|---|---|---|
+| Frontend | Vercel | https://jobhunt-frontend-three.vercel.app |
+| Backend | Render (Node.js + Express) | https://jobhunt-backend-a2kp.onrender.com |
+
+The backend is environment-aware (`NODE_ENV`) so it runs cleanly on Render without Docker, local clamd, or inline workers.
+
+### Environment-aware CORS
+
+CORS origins are resolved by environment, and `CORS_ORIGINS` (comma-separated) overrides the defaults when set:
+
+| Environment | Default allowed origins |
+|---|---|
+| development | `http://localhost:5173`, `http://localhost:3000` |
+| production | `https://jobhunt-frontend-three.vercel.app` |
+
+Non-browser clients (curl/Postman, no `Origin`) are always allowed; unknown browser origins are rejected. `credentials: true` is kept for cookie auth.
+
+### ClamAV disabled in production
+
+ClamAV needs a local `clamd` daemon (Docker, port 3310) that managed hosts like Render don't provide, so scanning is environment-aware (`utils/clamav.js`):
+
+* **Development:** scanning **enabled** by default.
+* **Production:** scanning **disabled** by default — `initClamAV()` is skipped and `scanFile()` returns `{ isInfected: false, skipped: true }`, so uploads keep working.
+* **Override:** `CLAMAV_ENABLED=true|false`; host/port/timeout via `CLAMAV_HOST` / `CLAMAV_PORT` / `CLAMAV_TIMEOUT_MS`.
+* Clear startup logging shows whether scanning is `ENABLED` or `DISABLED`.
+
+### Worker separation (API vs. workers)
+
+Inline BullMQ workers are **OFF by default in both dev and production** (controlled by `WORKERS_INLINE`):
+
+* **Development:** set `WORKERS_INLINE=true` to run workers inside the API, or run `npm run worker` in a second terminal.
+* **Production (Render):** the API web service runs **independently**; run workers as a **separate Render Background Worker** service with start command `npm run worker`.
+
+### Startup safety logs
+
+On boot the server prints a banner with the live config so misconfigurations are obvious in Render logs:
+
+```
+────────────────────────────────────────────
+ JobHunt backend started
+  • NODE_ENV       : production
+  • Port           : 10000
+  • ClamAV scan    : DISABLED
+  • Inline workers : DISABLED
+  • CORS origins   : https://jobhunt-frontend-three.vercel.app
+────────────────────────────────────────────
+```
+
+### Render environment variables
+
+Set these on the **API web service** (in addition to the secrets in `.env.example`):
+
+```bash
+NODE_ENV=production
+CORS_ORIGINS=https://jobhunt-frontend-three.vercel.app   # optional; prod default already matches
+WORKERS_INLINE=false                                     # or leave unset
+CLAMAV_ENABLED=false                                     # or leave unset (prod default)
+# PORT is injected by Render automatically — do not hardcode it
+```
+
+For background jobs in production, create a **separate Render Background Worker** from the same repo with start command `npm run worker` and the same env vars. See `backend/.env.example` for the full annotated list.
+
+---
+
+## �🔮 Future Enhancements
 
 * Email notifications
 * Real-time chat between recruiter and candidate

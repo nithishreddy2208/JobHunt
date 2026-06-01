@@ -18,14 +18,24 @@ import { llmService } from './services/llm.service.js';
 import { startAllWorkers, stopAllWorkers } from './workers/index.js';
 import { closeBullConnection } from './config/queue.js';
 
-import { initClamAV } from './utils/clamav.js';
+import { initClamAV, isClamAvEnabled } from './utils/clamav.js';
 
 dotenv.config();
 
 const app = express();
 
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000')
-    .split(',')
+const isProd = process.env.NODE_ENV === 'production';
+
+// Environment-aware CORS allow-list.
+// - Development: localhost dev servers.
+// - Production: the deployed frontend origin(s).
+// CORS_ORIGINS (comma-separated) always overrides the defaults when provided.
+const defaultDevOrigins = ['http://localhost:5173', 'http://localhost:3000'];
+const defaultProdOrigins = ['https://jobhunt-frontend-three.vercel.app'];
+
+const allowedOrigins = (process.env.CORS_ORIGINS
+    ? process.env.CORS_ORIGINS.split(',')
+    : (isProd ? defaultProdOrigins : defaultDevOrigins))
     .map((o) => o.trim())
     .filter(Boolean);
 
@@ -67,9 +77,8 @@ const startServer = async () => {
 
         try {
             await initClamAV();
-            console.log("ClamAV initialized");
         } catch (err) {
-            console.error("ClamAV initialization failed (continuing without scan):", err);
+            console.error("[clamav] initialization failed (continuing without scan):", err?.message || err);
         }
 
         await jobSearchService.init({
@@ -77,28 +86,36 @@ const startServer = async () => {
         });
         console.log("Trie initialized");
 
+        const workersInlineFlag = (process.env.WORKERS_INLINE || 'false').toLowerCase() === 'true';
+
         server = app.listen(PORT, () => {
-            console.log(`Server running on port ${PORT}`);
+            console.log('────────────────────────────────────────────');
+            console.log(' JobHunt backend started');
+            console.log(`  • NODE_ENV       : ${process.env.NODE_ENV || 'development'}`);
+            console.log(`  • Port           : ${PORT}`);
+            console.log(`  • ClamAV scan    : ${isClamAvEnabled() ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`  • Inline workers : ${workersInlineFlag ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`  • CORS origins   : ${allowedOrigins.join(', ') || '(none)'}`);
+            console.log('────────────────────────────────────────────');
         });
 
         llmService.warmup().catch(() => {});
 
-        // Workers are OFF in dev unless WORKERS_INLINE=true is set explicitly.
-        // Reason: nodemon hot-reload leaks blocking BZPOPMIN connections to Upstash
-        // for ~minutes after each restart, multiplying billed commands.
-        // In production, default ON (single dedicated worker process is also fine -> set WORKERS_INLINE=false and run `node worker.js`).
-        const isProd = process.env.NODE_ENV === 'production';
-        const workersInlineDefault = isProd ? 'true' : 'false';
-        const workersInline = (process.env.WORKERS_INLINE || workersInlineDefault).toLowerCase() === 'true';
-
-        if (workersInline) {
+        // Inline workers are OFF by default in BOTH dev and production.
+        //  - Dev: nodemon hot-reload leaks blocking BZPOPMIN connections to Upstash,
+        //    multiplying billed commands.
+        //  - Production (Render): the API web service must run independently; workers
+        //    run as a separate process via `npm run worker`.
+        // Set WORKERS_INLINE=true to opt into running workers inside the API process.
+        if (workersInlineFlag) {
             try {
                 startAllWorkers();
+                console.log('[workers] inline workers ENABLED (running inside API process)');
             } catch (err) {
                 console.error('[workers] failed to start inline:', err?.message || err);
             }
         } else {
-            console.log('[workers] inline workers DISABLED (set WORKERS_INLINE=true to enable, or run `node worker.js` in a separate process)');
+            console.log('[workers] inline workers DISABLED (run `npm run worker` in a separate process)');
         }
 
     } catch (error) {
