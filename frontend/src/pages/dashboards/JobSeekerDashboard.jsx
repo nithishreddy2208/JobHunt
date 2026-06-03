@@ -64,8 +64,8 @@ const STATUS_BADGE = {
 };
 
 export default function JobSeekerDashboard() {
-  const { user, isPro } = useAuth();
-  const { recommendations, resumeAnalysis, applications } = useSeekerDashboard();
+  const { user, isPro, isAuthenticated } = useAuth();
+  const { recommendations, resumeAnalysis, applications } = useSeekerDashboard({ enabled: isAuthenticated });
 
   const completion = useMemo(() => computeProfileCompletion(user), [user]);
   const recsSummary = useMemo(

@@ -10,40 +10,101 @@
 const clampPct = (n) => Math.max(0, Math.min(100, Math.round(Number(n) || 0)));
 
 /**
- * Profile completion: 0..100 based on which profile fields are populated.
- * Each field has a fixed weight so the bar moves predictably as the user
- * fills in their profile.
+ * Profile strength engine: 0..100 derived from which profile fields are
+ * populated, each weighted by how much it matters for matching + recruiter
+ * appeal. Returns the score plus an ordered list of personalized, actionable
+ * recommendations (highest-impact gap first) so the UI can drive the user
+ * toward the single most valuable next step.
+ *
+ * Weights are tuned so a resume + skills (the matching-critical fields) account
+ * for the bulk of the score, while presentation fields (photo, bio) round it
+ * out. Every recommendation carries the points it would unlock.
  */
+const PROFILE_FIELDS = [
+  {
+    key: 'name',
+    weight: 8,
+    test: (u) => !!(u.name && u.name.trim()),
+    label: 'Add your full name',
+    hint: 'Recruiters skip nameless profiles.'
+  },
+  {
+    key: 'email',
+    weight: 7,
+    test: (u) => !!(u.email && u.email.trim()),
+    label: 'Add a contact email',
+    hint: 'So recruiters can reach you.'
+  },
+  {
+    key: 'phone',
+    weight: 5,
+    test: (u) => !!(u.phoneNumber && String(u.phoneNumber).trim()),
+    label: 'Add a phone number',
+    hint: 'Speeds up recruiter outreach.'
+  },
+  {
+    key: 'photo',
+    weight: 12,
+    test: (u) => !!u?.profile?.photo,
+    label: 'Upload a profile photo',
+    hint: 'Profiles with a photo get more recruiter views.'
+  },
+  {
+    key: 'bio',
+    weight: 13,
+    test: (u) => !!(u?.profile?.bio && u.profile.bio.trim().length >= 20),
+    label: 'Write a short bio / target role',
+    hint: 'Helps AI tailor matches to your goals.'
+  },
+  {
+    key: 'skills',
+    weight: 20,
+    test: (u) => Array.isArray(u?.profile?.skills) && u.profile.skills.length >= 3,
+    label: 'List at least 3 skills',
+    hint: 'Skills drive your job-match score.'
+  },
+  {
+    key: 'resume',
+    weight: 25,
+    test: (u) => !!u?.profile?.resume,
+    label: 'Upload a PDF resume',
+    hint: 'Unlocks AI recommendations and resume analysis.'
+  },
+  {
+    key: 'resumeText',
+    weight: 10,
+    test: (u) => !!(u?.profile?.resumeText && u.profile.resumeText.length > 100),
+    label: 'Resume is still being processed',
+    hint: 'We extract text in the background — check back shortly.'
+  }
+];
+
 export const computeProfileCompletion = (user) => {
-  if (!user) return { percent: 0, missing: ['everything'] };
+  if (!user) {
+    return { percent: 0, missing: ['Sign in to build your profile'], recommendations: [] };
+  }
 
-  const checks = [
-    { key: 'name', ok: !!(user.name && user.name.trim()), weight: 10 },
-    { key: 'email', ok: !!(user.email && user.email.trim()), weight: 10 },
-    { key: 'photo', ok: !!user?.profile?.photo, weight: 15 },
-    { key: 'bio', ok: !!(user?.profile?.bio && user.profile.bio.trim().length >= 20), weight: 15 },
-    { key: 'skills', ok: Array.isArray(user?.profile?.skills) && user.profile.skills.length >= 3, weight: 20 },
-    { key: 'resume', ok: !!user?.profile?.resume, weight: 20 },
-    { key: 'resumeText', ok: !!(user?.profile?.resumeText && user.profile.resumeText.length > 100), weight: 10 }
-  ];
-
-  const total = checks.reduce((s, c) => s + c.weight, 0);
-  const earned = checks.reduce((s, c) => s + (c.ok ? c.weight : 0), 0);
+  const total = PROFILE_FIELDS.reduce((s, f) => s + f.weight, 0);
+  const evaluated = PROFILE_FIELDS.map((f) => ({ ...f, ok: f.test(user) }));
+  const earned = evaluated.reduce((s, f) => s + (f.ok ? f.weight : 0), 0);
   const percent = clampPct((earned / total) * 100);
 
-  const labelFor = {
-    name: 'Add your name',
-    email: 'Add an email',
-    photo: 'Upload a profile photo',
-    bio: 'Write a short bio (20+ chars)',
-    skills: 'List 3+ skills',
-    resume: 'Upload a resume',
-    resumeText: 'Resume text not extracted yet'
-  };
+  // Personalized recommendations: only the gaps, ordered by impact (points)
+  // so the highest-value action surfaces first.
+  const recommendations = evaluated
+    .filter((f) => !f.ok)
+    .sort((a, b) => b.weight - a.weight)
+    .map((f) => ({
+      key: f.key,
+      label: f.label,
+      hint: f.hint,
+      points: clampPct((f.weight / total) * 100)
+    }));
 
   return {
     percent,
-    missing: checks.filter((c) => !c.ok).map((c) => labelFor[c.key])
+    missing: recommendations.map((r) => r.label),
+    recommendations
   };
 };
 

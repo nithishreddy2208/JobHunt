@@ -121,3 +121,21 @@ export const useUpdateRecruiterProfile = () => {
     }
   });
 };
+
+// Avatar upload uses the dedicated image-only endpoint so the recruiter photo
+// is never validated against the resume PDF filter.
+export const useUpdateRecruiterPhoto = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (file) => userApi.updatePhoto(file),
+    onSuccess: (data) => {
+      qc.setQueryData(['auth', 'me'], (prev) =>
+        prev ? { ...prev, user: data.user || prev.user } : prev
+      );
+      toast.success(data?.message || 'Profile photo updated');
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.message || 'Photo upload failed');
+    }
+  });
+};

@@ -18,10 +18,12 @@ import {
   CheckCircle2,
   Circle,
   Lightbulb,
-  ArrowRight
+  ArrowRight,
+  Camera
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { userApi } from '@/api/user.api';
+import { apiUrl } from '@/api/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +46,7 @@ export default function ProfilePage() {
   const { user, isPro } = useAuth();
   const queryClient = useQueryClient();
   const fileRef = useRef(null);
+  const photoRef = useRef(null);
 
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({
@@ -85,6 +88,36 @@ export default function ProfilePage() {
       toast.error(err.response?.data?.message || 'Update failed');
     }
   });
+
+  // Profile photo uploads hit the dedicated image-only endpoint
+  // (PUT /user/profile/photo) so resume PDF validation never applies. Uploads
+  // fire immediately on file selection so the avatar updates without leaving
+  // the page.
+  const photoMutation = useMutation({
+    mutationFn: (file) => userApi.updatePhoto(file),
+    onSuccess: (data) => {
+      toast.success('Profile photo updated');
+      queryClient.setQueryData(['auth', 'me'], (prev) =>
+        prev ? { ...prev, user: data.user || prev.user } : prev
+      );
+      if (photoRef.current) photoRef.current.value = '';
+    },
+    onError: (err) => {
+      toast.error(err.response?.data?.message || 'Photo upload failed');
+      if (photoRef.current) photoRef.current.value = '';
+    }
+  });
+
+  const onPhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      if (photoRef.current) photoRef.current.value = '';
+      return;
+    }
+    photoMutation.mutate(file);
+  };
 
   const onSubmit = (e) => {
     e.preventDefault();
@@ -129,7 +162,8 @@ export default function ProfilePage() {
   const hasResume = Boolean(user.profile?.resume);
   // Always open via the backend proxy: it bypasses Cloudinary's free-tier PDF restriction
   // and serves the file with `Content-Disposition: inline` so it renders in-browser.
-  const resumeViewUrl = '/api/user/resume';
+  // apiUrl() pins this to the backend origin so it doesn't 404 on the Vercel frontend.
+  const resumeViewUrl = apiUrl('/user/resume');
   const resumeName = user.profile?.resumeName;
   const photo = user.profile?.photo;
 
@@ -157,6 +191,26 @@ export default function ProfilePage() {
                         {initialsOf(user.name)}
                       </div>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => photoRef.current?.click()}
+                      disabled={photoMutation.isPending}
+                      title={photo ? 'Replace photo' : 'Upload photo'}
+                      className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-background bg-accent text-accent-foreground shadow transition-colors hover:bg-accent/90 disabled:opacity-60"
+                    >
+                      {photoMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                    </button>
+                    <input
+                      ref={photoRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={onPhotoChange}
+                    />
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -269,6 +323,60 @@ export default function ProfilePage() {
               </Button>
             </div>
           </div>
+
+          {/* Profile photo */}
+          <Card>
+            <CardContent className="space-y-4 p-5">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Profile photo
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  A clear headshot helps recruiters recognize you.
+                </p>
+              </div>
+              <div className="flex items-center gap-4">
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt={user.name}
+                    className="h-16 w-16 rounded-full border object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent text-lg font-bold text-accent-foreground">
+                    {initialsOf(user.name)}
+                  </div>
+                )}
+                <div className="grid gap-2">
+                  <input
+                    ref={photoRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={onPhotoChange}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => photoRef.current?.click()}
+                    disabled={photoMutation.isPending}
+                  >
+                    {photoMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" /> Uploading…
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-4 w-4" /> {photo ? 'Replace photo' : 'Upload photo'}
+                      </>
+                    )}
+                  </Button>
+                  <p className="text-xs text-muted-foreground">PNG or JPG, saved instantly.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Resume */}
           <Card>
@@ -414,7 +522,8 @@ const EmptyHint = ({ label }) => (
 // a skills visualization. `completion` comes from computeProfileCompletion.
 const ProfileStrength = ({ completion, skills, onEdit }) => {
   const tone = scoreTone(completion.percent);
-  const complete = completion.missing.length === 0;
+  const recommendations = completion.recommendations || [];
+  const complete = recommendations.length === 0;
 
   return (
     <>
@@ -442,11 +551,17 @@ const ProfileStrength = ({ completion, skills, onEdit }) => {
               <CheckCircle2 className="h-4 w-4" /> Everything looks great. Keep your resume fresh.
             </div>
           ) : (
-            <ul className="space-y-1.5">
-              {completion.missing.map((m) => (
-                <li key={m} className="flex items-start gap-2 text-xs">
+            <ul className="space-y-2">
+              {recommendations.map((r) => (
+                <li key={r.key} className="flex items-start gap-2 text-xs">
                   <Circle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span className="text-foreground/80">{m}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="font-medium text-foreground/90">{r.label}</span>
+                    {r.hint && <span className="block text-[11px] text-muted-foreground">{r.hint}</span>}
+                  </span>
+                  <span className="shrink-0 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent">
+                    +{r.points}%
+                  </span>
                 </li>
               ))}
             </ul>

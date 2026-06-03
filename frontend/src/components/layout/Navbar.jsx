@@ -25,10 +25,20 @@ const recruiterLinks = [
   { to: '/admin/profile', label: 'Profile' }
 ];
 
+const initialsOf = (name = '') =>
+  name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() || '')
+    .join('') || 'U';
+
 export const Navbar = () => {
   const { user, isAuthenticated, isPro, logout } = useAuth();
   const isRecruiter = user?.role === 'recruiter';
   const links = isAuthenticated ? (isRecruiter ? recruiterLinks : seekerLinks) : [];
+  const photo = user?.profile?.photo;
+  const profileHref = isRecruiter ? '/admin/profile' : '/profile';
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-card/80 backdrop-blur">
@@ -64,7 +74,20 @@ export const Navbar = () => {
                   </Link>
                 )
               )}
-              <span className="hidden text-sm text-muted-foreground sm:inline">{user?.name}</span>
+              <Link to={profileHref} className="flex items-center gap-2" title="Profile">
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt={user?.name || 'Profile'}
+                    className="h-8 w-8 rounded-full border border-border object-cover"
+                  />
+                ) : (
+                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-xs font-bold text-accent-foreground">
+                    {initialsOf(user?.name)}
+                  </span>
+                )}
+                <span className="hidden text-sm text-muted-foreground sm:inline">{user?.name}</span>
+              </Link>
               <Button variant="ghost" size="sm" onClick={() => logout()}>
                 <LogOut className="h-4 w-4" />
                 Logout

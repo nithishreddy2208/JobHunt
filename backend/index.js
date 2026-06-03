@@ -86,7 +86,16 @@ const startServer = async () => {
         });
         console.log("Trie initialized");
 
-        const workersInlineFlag = (process.env.WORKERS_INLINE || 'false').toLowerCase() === 'true';
+        // Worker placement:
+        //  - Render free tier has no Background Worker service and a separate
+        //    worker process fails (Render expects an HTTP port). So in
+        //    production we run the BullMQ worker INSIDE this web process.
+        //  - In development we keep workers OFF by default because nodemon
+        //    hot-reloads leak blocking BZPOPMIN connections to Upstash.
+        // WORKERS_INLINE (true/false) always overrides this default when set.
+        const workersInlineFlag = process.env.WORKERS_INLINE != null && process.env.WORKERS_INLINE !== ''
+            ? process.env.WORKERS_INLINE.toLowerCase() === 'true'
+            : isProd;
 
         server = app.listen(PORT, () => {
             console.log('────────────────────────────────────────────');
@@ -101,12 +110,8 @@ const startServer = async () => {
 
         llmService.warmup().catch(() => {});
 
-        // Inline workers are OFF by default in BOTH dev and production.
-        //  - Dev: nodemon hot-reload leaks blocking BZPOPMIN connections to Upstash,
-        //    multiplying billed commands.
-        //  - Production (Render): the API web service must run independently; workers
-        //    run as a separate process via `npm run worker`.
-        // Set WORKERS_INLINE=true to opt into running workers inside the API process.
+        // startAllWorkers() is idempotent (the underlying BullMQ Worker is a
+        // singleton), so this can never double-initialize even if called twice.
         if (workersInlineFlag) {
             try {
                 startAllWorkers();
@@ -115,7 +120,7 @@ const startServer = async () => {
                 console.error('[workers] failed to start inline:', err?.message || err);
             }
         } else {
-            console.log('[workers] inline workers DISABLED (run `npm run worker` in a separate process)');
+            console.log('[workers] inline workers DISABLED (set WORKERS_INLINE=true to run them inside the API process)');
         }
 
     } catch (error) {

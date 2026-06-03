@@ -9,7 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   useCompanies,
   useCreateCompany,
-  useUpdateRecruiterProfile
+  useUpdateRecruiterProfile,
+  useUpdateRecruiterPhoto
 } from '@/hooks/recruiter/useRecruiterQueries';
 
 const Initials = ({ name }) => {
@@ -35,6 +36,7 @@ export default function AdminProfilePage() {
   const { data: companies = [], isLoading: companiesLoading } = useCompanies();
   const createCompany = useCreateCompany();
   const updateProfile = useUpdateRecruiterProfile();
+  const updatePhoto = useUpdateRecruiterPhoto();
 
   const [form, setForm] = useState({
     name: '',
@@ -92,10 +94,7 @@ export default function AdminProfilePage() {
 
   const onSavePhoto = () => {
     if (!photoFile) return;
-    const fd = new FormData();
-    fd.append('kind', 'photo');
-    fd.append('file', photoFile);
-    updateProfile.mutate(fd, {
+    updatePhoto.mutate(photoFile, {
       onSuccess: () => {
         setPhotoFile(null);
         setPhotoPreview('');
@@ -152,9 +151,9 @@ export default function AdminProfilePage() {
                 variant="accent"
                 size="sm"
                 onClick={onSavePhoto}
-                disabled={!photoFile || updateProfile.isPending}
+                disabled={!photoFile || updatePhoto.isPending}
               >
-                {updateProfile.isPending ? (
+                {updatePhoto.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
                   <Camera className="h-4 w-4" />

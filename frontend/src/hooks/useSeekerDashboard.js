@@ -7,6 +7,9 @@ import { applicationApi } from '@/api/application.api';
 const STALE_MS = 5 * 60_000;
 
 export const useSeekerDashboard = ({ enabled = true } = {}) => {
+  // `enabled` is wired to the auth state by the caller so none of these
+  // protected reads fire before the session probe resolves (prevents 401 spam
+  // during startup and across independent browser sessions).
   const recommendations = useQuery({
     queryKey: ['ai', 'recommendations'],
     queryFn: aiApi.recommendJobs,
@@ -30,7 +33,8 @@ export const useSeekerDashboard = ({ enabled = true } = {}) => {
     queryKey: ['applications', 'seeker', 'recent'],
     queryFn: () => applicationApi.mine({ page: 1, limit: 20 }),
     enabled,
-    staleTime: STALE_MS
+    staleTime: STALE_MS,
+    retry: false
   });
 
   return { recommendations, resumeAnalysis, applications };

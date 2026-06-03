@@ -152,13 +152,14 @@ export class LlmService {
         if (!res?.ok) throw new Error(res?.data?.error || res?.data?.message || 'OpenRouter request failed');
         const text = res?.data?.text || '';
         if (!text) throw new Error('OpenRouter returned empty response');
+        const model = res?.data?.model || 'unknown';
 
         // OpenRouter call is non-streaming here; if caller asked for stream,
         // emit the full text once so downstream code that consumes onToken still works.
         if (stream && typeof onToken === 'function') onToken(text);
 
-        console.log(`[llm] provider=openrouter ms=${Date.now() - orStart} ok=true`);
-        return { success: true, provider: 'openrouter', text };
+        console.log(`[llm] provider=openrouter model=${model} ms=${Date.now() - orStart} ok=true`);
+        return { success: true, provider: 'openrouter', model, text };
       } catch (err) {
         openRouterError = err?.message || String(err);
         console.log(`[llm] provider=openrouter ms=${Date.now() - orStart} ok=false err=${openRouterError}`);

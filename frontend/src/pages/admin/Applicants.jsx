@@ -31,6 +31,7 @@ import { ScoreRing, ScoreBar, AiBadge, AiSection, scoreTone } from '@/components
 import CandidateSummaryDialog from '@/components/recruiter/ai/CandidateSummaryDialog';
 import EmailGeneratorDialog from '@/components/recruiter/ai/EmailGeneratorDialog';
 import { useAuth } from '@/hooks/useAuth';
+import { apiUrl } from '@/api/client';
 import { cn } from '@/lib/utils';
 
 const STATUS_META = {
@@ -364,7 +365,9 @@ function ApplicantCard({ app, score, onStatusChange, isUpdating, onSummary, onEm
   const user = app.applicant || {};
   const skills = Array.isArray(user.profile?.skills) ? user.profile.skills : [];
   const hasResume = Boolean(user.profile?.resume);
-  const resume = hasResume ? `/api/application/${app._id}/resume` : null;
+  // apiUrl() pins this to the backend origin; a bare `/api/...` anchor href
+  // resolves against the Vercel frontend and returns 404.
+  const resume = hasResume ? apiUrl(`/application/${app._id}/resume`) : null;
   const meta = STATUS_META[app.status] || STATUS_META.pending;
 
   return (

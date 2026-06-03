@@ -72,6 +72,19 @@ const NAV_ITEMS = [
   }
 ];
 
+const Avatar = ({ name, photo }) => {
+  if (photo) {
+    return (
+      <img
+        src={photo}
+        alt={name || 'Recruiter'}
+        className="h-9 w-9 rounded-full border border-border object-cover"
+      />
+    );
+  }
+  return <Initials name={name} />;
+};
+
 const Initials = ({ name }) => {
   const initials = (name || '')
     .split(' ')
@@ -175,7 +188,7 @@ export default function RecruiterLayout() {
         {/* User block */}
         <div className="border-t border-border p-3">
           <div className="mb-2 flex items-center gap-3 rounded-md p-2">
-            <Initials name={user?.name} />
+            <Avatar name={user?.name} photo={user?.profile?.photo} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{user?.name || 'Recruiter'}</p>
               <p className="truncate text-xs text-muted-foreground">{user?.email}</p>

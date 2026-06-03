@@ -148,7 +148,10 @@ export const update = async (req, res) => {
         }
 
         let newResumeUrl = null;
-        const uploadKind = String(req.body?.kind || 'resume').toLowerCase();
+        // `req.uploadKind` is set by dedicated routes (e.g. the photo endpoint)
+        // and takes precedence over the body field so the upload type can't be
+        // spoofed and doesn't depend on multipart field ordering.
+        const uploadKind = String(req.uploadKind || req.body?.kind || 'resume').toLowerCase();
 
         if (req.file) {
             const file = req.file;
