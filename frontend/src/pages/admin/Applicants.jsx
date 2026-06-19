@@ -14,7 +14,14 @@ import {
   Filter,
   BarChart3,
   TrendingUp,
-  Loader2
+  Loader2,
+  ClipboardList,
+  ChevronDown,
+  Briefcase,
+  Wallet,
+  Clock,
+  MapPin,
+  GraduationCap
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -361,6 +368,100 @@ function MiniStat({ icon: Icon, label, value, tone }) {
   );
 }
 
+function ScreeningPanel({ screening }) {
+  const [open, setOpen] = useState(false);
+  if (!screening || !screening.candidateType) return null;
+
+  const isFresher = screening.candidateType === 'fresher';
+  const facts = isFresher
+    ? [
+        { icon: GraduationCap, label: 'Education', value: [screening.degree, screening.college].filter(Boolean).join(', ') },
+        { icon: GraduationCap, label: 'Graduation', value: [screening.graduationYear, screening.cgpa && `CGPA ${screening.cgpa}`].filter(Boolean).join(' · ') },
+        { icon: Wallet, label: 'Expected', value: screening.expectedSalary },
+        { icon: MapPin, label: 'Preferred', value: screening.preferredLocation },
+        { icon: Briefcase, label: 'Stack', value: screening.preferredStack },
+        { icon: MapPin, label: 'Relocate', value: screening.relocation === true ? 'Yes' : screening.relocation === false ? 'No' : '' }
+      ]
+    : [
+        { icon: Briefcase, label: 'Experience', value: [screening.experienceYears, screening.relevantExperience && `${screening.relevantExperience} relevant`].filter(Boolean).join(' · ') },
+        { icon: Wallet, label: 'Current CTC', value: screening.currentCTC },
+        { icon: Wallet, label: 'Expected CTC', value: screening.expectedCTC },
+        { icon: Clock, label: 'Notice', value: screening.noticePeriod },
+        { icon: MapPin, label: 'Location', value: [screening.currentLocation, screening.preferredLocation && `→ ${screening.preferredLocation}`].filter(Boolean).join(' ') },
+        { icon: Briefcase, label: 'Current co.', value: screening.currentCompany }
+      ];
+
+  const allSkills = [...(screening.skills || []), ...(screening.secondarySkills || [])];
+
+  return (
+    <div className="rounded-md border border-accent/30 bg-accent/[0.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="h-4 w-4 text-accent" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-accent">Pre-screening</span>
+          <Badge variant="outline" className="capitalize">{screening.candidateType}</Badge>
+        </div>
+        {typeof screening.aiMatchScore === 'number' && (
+          <Badge variant="accent" className="gap-1">
+            <Brain className="h-3 w-3" /> AI match {screening.aiMatchScore}%
+          </Badge>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-x-4 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+        {facts.filter((f) => f.value).map((f) => (
+          <div key={f.label} className="flex items-center gap-2 text-xs">
+            <f.icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="text-muted-foreground">{f.label}:</span>
+            <span className="truncate font-medium text-foreground">{f.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {allSkills.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {allSkills.slice(0, 12).map((s) => (
+            <Badge key={s} variant="outline">{s}</Badge>
+          ))}
+        </div>
+      )}
+
+      {screening.experienceSummary && (
+        <p className="mt-3 text-xs leading-relaxed text-foreground/90">
+          <span className="font-semibold">Summary: </span>{screening.experienceSummary}
+        </p>
+      )}
+      {screening.aiMatchSummary && (
+        <p className="mt-2 rounded bg-accent/10 px-2 py-1.5 text-xs italic text-foreground/90">
+          AI: {screening.aiMatchSummary}
+        </p>
+      )}
+
+      {Array.isArray(screening.answers) && screening.answers.length > 0 && (
+        <div className="mt-3">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline"
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+            {open ? 'Hide' : 'View'} all {screening.answers.length} answers
+          </button>
+          {open && (
+            <div className="mt-2 space-y-2 border-t border-border pt-2">
+              {screening.answers.map((qa, i) => (
+                <div key={i} className="text-xs">
+                  <p className="font-medium text-muted-foreground">{qa.question}</p>
+                  <p className="text-foreground">{qa.answer || '—'}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApplicantCard({ app, score, onStatusChange, isUpdating, onSummary, onEmail }) {
   const user = app.applicant || {};
   const skills = Array.isArray(user.profile?.skills) ? user.profile.skills : [];
@@ -437,6 +538,8 @@ function ApplicantCard({ app, score, onStatusChange, isUpdating, onSummary, onEm
             )}
           </div>
         )}
+
+        <ScreeningPanel screening={app.screening} />
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
           <div className="flex items-center gap-3 text-xs text-muted-foreground">

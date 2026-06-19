@@ -56,7 +56,7 @@ export class OpenRouterService {
     return this.enabled;
   }
 
-  async generateJson({ system, user }) {
+  async generateJson({ system, user, format }) {
     const apiKey = process.env.OPEN_ROUTER_API_KEY;
     if (!apiKey) {
       return { ok: false, data: { message: 'OpenRouter disabled (no OPEN_ROUTER_API_KEY)' } };
@@ -74,7 +74,7 @@ export class OpenRouterService {
       const model = models[i];
       console.log(`[AI] Trying ${model}`);
 
-      const result = await this.callModel({ apiKey, model, content: mergedUserContent });
+      const result = await this.callModel({ apiKey, model, content: mergedUserContent, format });
 
       if (result.ok) {
         console.log(`[AI] Success (${model})`);
@@ -112,11 +112,14 @@ export class OpenRouterService {
    *  - failover=true  -> caller should try the next model
    *  - failover=false -> non-retryable (e.g. 400/401), stop the chain
    */
-  async callModel({ apiKey, model, content, _retried = false }) {
+  async callModel({ apiKey, model, content, format, _retried = false }) {
     const body = {
       model,
       messages: [{ role: 'user', content }]
     };
+    if (format === 'json') {
+      body.response_format = { type: 'json_object' };
+    }
 
     try {
       const res = await fetch(OPENROUTER_URL, {
@@ -147,7 +150,7 @@ export class OpenRouterService {
       // Network/abort error: retry once on the same model, then failover.
       if (!_retried) {
         await sleep(250);
-        return this.callModel({ apiKey, model, content, _retried: true });
+        return this.callModel({ apiKey, model, content, format, _retried: true });
       }
       return { ok: false, failover: true, error: err?.message || String(err) };
     }

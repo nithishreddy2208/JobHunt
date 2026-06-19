@@ -20,7 +20,9 @@ const readStoredTheme = () => {
     const v = localStorage.getItem(STORAGE_KEY);
     if (v === 'light' || v === 'dark' || v === 'system') return v;
   } catch {}
-  return 'system';
+  // First visit (no stored preference): default to dark mode. Users can still
+  // switch to light/system manually, which persists to localStorage.
+  return 'dark';
 };
 
 /**

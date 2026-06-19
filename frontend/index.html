@@ -15,7 +15,9 @@
         try {
           var stored = localStorage.getItem('jobhunt-theme');
           var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var isDark = stored === 'dark' || ((!stored || stored === 'system') && prefersDark);
+          // Default to DARK on first visit (no stored preference). If the user
+          // explicitly chose "system", follow the OS setting; "light"/"dark" win.
+          var isDark = stored === 'dark' || !stored || (stored === 'system' && prefersDark);
           document.documentElement.classList.toggle('dark', isDark);
           document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
         } catch (e) {}

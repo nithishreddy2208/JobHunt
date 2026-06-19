@@ -19,6 +19,24 @@ export default function JdOptimizerPage() {
   const result = optimize.data;
   const opt = result?.optimized;
 
+  const responsibilitiesList = Array.isArray(opt?.responsibilities)
+    ? opt.responsibilities
+    : opt?.responsibilities
+      ? [opt.responsibilities]
+      : [];
+
+  const requirementsList = Array.isArray(opt?.requirements)
+    ? opt.requirements
+    : opt?.requirements
+      ? [opt.requirements]
+      : [];
+
+  const improvementsList = Array.isArray(opt?.improvements)
+    ? opt.improvements
+    : opt?.improvements
+      ? [opt.improvements]
+      : [];
+
   const handleOptimize = () => {
     if (description.trim().length < 20) {
       toast.error('Please add at least 20 characters of description.');
@@ -41,10 +59,10 @@ export default function JdOptimizerPage() {
         opt.optimizedDescription,
         '',
         'Responsibilities:',
-        ...(opt.responsibilities || []).map((r) => `- ${r}`),
+        ...responsibilitiesList.map((r) => `- ${r}`),
         '',
         'Requirements:',
-        ...(opt.requirements || []).map((r) => `- ${r}`)
+        ...requirementsList.map((r) => `- ${r}`)
       ].join('\n');
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -127,13 +145,13 @@ export default function JdOptimizerPage() {
                   <p className="whitespace-pre-wrap leading-relaxed">{opt.optimizedDescription}</p>
                 </div>
 
-                {!!(opt.responsibilities || []).length && (
+                {!!responsibilitiesList.length && (
                   <div>
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Responsibilities
                     </p>
                     <ul className="space-y-1">
-                      {opt.responsibilities.map((r, i) => (
+                      {responsibilitiesList.map((r, i) => (
                         <li key={i} className="flex gap-2">
                           <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
                           <span>{r}</span>
@@ -143,26 +161,26 @@ export default function JdOptimizerPage() {
                   </div>
                 )}
 
-                {!!(opt.requirements || []).length && (
+                {!!requirementsList.length && (
                   <div>
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Requirements
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {opt.requirements.map((r, i) => (
+                      {requirementsList.map((r, i) => (
                         <Badge key={i} variant="outline">{r}</Badge>
                       ))}
                     </div>
                   </div>
                 )}
 
-                {!!(opt.improvements || []).length && (
+                {!!improvementsList.length && (
                   <div className="rounded-md border border-border bg-muted/30 p-3">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-accent">
                       What changed
                     </p>
                     <ul className="space-y-1 text-xs text-muted-foreground">
-                      {opt.improvements.map((r, i) => (
+                      {improvementsList.map((r, i) => (
                         <li key={i}>• {r}</li>
                       ))}
                     </ul>

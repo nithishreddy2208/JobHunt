@@ -43,6 +43,7 @@ api.interceptors.response.use(
         }
       });
     } else if (status === 401) {
+      localStorage.removeItem('jobhunt_logged_in');
       // Don't toast on the auth probe; let the page handle it.
       const url = err.config?.url || '';
       if (!url.includes('/user/subscription') && !url.includes('/user/login')) {

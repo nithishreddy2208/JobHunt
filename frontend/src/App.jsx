@@ -1,32 +1,46 @@
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { Navbar } from '@/components/layout/Navbar';
 import { ProtectedRoute } from '@/routes/ProtectedRoute';
 import { RecruiterProtectedRoute } from '@/routes/RecruiterProtectedRoute';
-import HomePage from '@/pages/Home';
-import LoginPage from '@/pages/Login';
-import RegisterPage from '@/pages/Register';
-import JobsListPage from '@/pages/jobs/JobsList';
-import JobDetailPage from '@/pages/jobs/JobDetail';
-import ApplicationsPage from '@/pages/Applications';
-import ProfilePage from '@/pages/Profile';
-import UpgradePage from '@/pages/Upgrade';
-import RecommendationsPage from '@/pages/ai/Recommendations';
-import AnalyzeResumePage from '@/pages/ai/AnalyzeResume';
-import InterviewPrepPage from '@/pages/ai/InterviewPrep';
-import SemanticSearchPage from '@/pages/ai/SemanticSearch';
-import CoverLetterPage from '@/pages/ai/CoverLetter';
-import MockInterviewPage from '@/pages/ai/MockInterview';
+
+// Route-level code splitting: each page is a separate chunk so the initial
+// bundle (and the homepage) only downloads what it needs. Anonymous visitors
+// never fetch the seeker dashboard / AI / recruiter code.
+const HomePage = lazy(() => import('@/pages/Home'));
+const LoginPage = lazy(() => import('@/pages/Login'));
+const RegisterPage = lazy(() => import('@/pages/Register'));
+const JobsListPage = lazy(() => import('@/pages/jobs/JobsList'));
+const JobDetailPage = lazy(() => import('@/pages/jobs/JobDetail'));
+const ApplicationsPage = lazy(() => import('@/pages/Applications'));
+const ProfilePage = lazy(() => import('@/pages/Profile'));
+const UpgradePage = lazy(() => import('@/pages/Upgrade'));
+const RecommendationsPage = lazy(() => import('@/pages/ai/Recommendations'));
+const AnalyzeResumePage = lazy(() => import('@/pages/ai/AnalyzeResume'));
+const InterviewPrepPage = lazy(() => import('@/pages/ai/InterviewPrep'));
+const SemanticSearchPage = lazy(() => import('@/pages/ai/SemanticSearch'));
+const CoverLetterPage = lazy(() => import('@/pages/ai/CoverLetter'));
+const MockInterviewPage = lazy(() => import('@/pages/ai/MockInterview'));
 
 // Recruiter (admin) feature
-import RecruiterLayout from '@/components/recruiter/RecruiterLayout';
-import AdminDashboardPage from '@/pages/admin/AdminDashboard';
-import PostJobPage from '@/pages/admin/PostJob';
-import ManageJobsPage from '@/pages/admin/ManageJobs';
-import ApplicantsPage from '@/pages/admin/Applicants';
-import AdminProfilePage from '@/pages/admin/AdminProfile';
-import JobAnalyticsPage from '@/pages/admin/JobAnalytics';
-import JdOptimizerPage from '@/pages/admin/JdOptimizer';
-import EmailComposerPage from '@/pages/admin/EmailComposer';
+const RecruiterLayout = lazy(() => import('@/components/recruiter/RecruiterLayout'));
+const AdminDashboardPage = lazy(() => import('@/pages/admin/AdminDashboard'));
+const PostJobPage = lazy(() => import('@/pages/admin/PostJob'));
+const ManageJobsPage = lazy(() => import('@/pages/admin/ManageJobs'));
+const ApplicantsPage = lazy(() => import('@/pages/admin/Applicants'));
+const AdminProfilePage = lazy(() => import('@/pages/admin/AdminProfile'));
+const JobAnalyticsPage = lazy(() => import('@/pages/admin/JobAnalytics'));
+const JdOptimizerPage = lazy(() => import('@/pages/admin/JdOptimizer'));
+const EmailComposerPage = lazy(() => import('@/pages/admin/EmailComposer'));
+
+function RouteFallback() {
+  return (
+    <div className="flex h-[60vh] items-center justify-center text-muted-foreground">
+      <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading…
+    </div>
+  );
+}
 
 export default function App() {
   const location = useLocation();
@@ -34,10 +48,24 @@ export default function App() {
   // is suppressed for every /admin/* route to avoid a double-header.
   const hideGlobalNavbar = location.pathname.startsWith('/admin');
 
+  useEffect(() => {
+    if (location.hash) {
+      const id = location.hash.replace('#', '');
+      const element = document.getElementById(id);
+      if (element) {
+        const timer = setTimeout(() => {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [location.hash, location.pathname]);
+
   return (
     <div className="min-h-full bg-background">
       {!hideGlobalNavbar && <Navbar />}
       <main>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -84,6 +112,7 @@ export default function App() {
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </main>
     </div>
   );

@@ -13,9 +13,12 @@ export const useAuth = () => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
+  const hasLoginFlag = typeof window !== 'undefined' && localStorage.getItem('jobhunt_logged_in') === 'true';
+
   const meQuery = useQuery({
     queryKey: ME_KEY,
     queryFn: authApi.me,
+    enabled: hasLoginFlag,
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: false
@@ -24,6 +27,7 @@ export const useAuth = () => {
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: (data) => {
+      localStorage.setItem('jobhunt_logged_in', 'true');
       // Backend returns full user; cache it as the session
       queryClient.setQueryData(ME_KEY, {
         success: true,
@@ -54,6 +58,7 @@ export const useAuth = () => {
   const logoutMutation = useMutation({
     mutationFn: authApi.logout,
     onSuccess: () => {
+      localStorage.removeItem('jobhunt_logged_in');
       queryClient.setQueryData(ME_KEY, null);
       queryClient.clear();
       toast.success('Logged out');

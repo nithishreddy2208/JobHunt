@@ -31,6 +31,77 @@ const log = (key, hit) => {
 
 const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9+#.]+/g, ' ').trim();
 
+const normalizeOptimizedJd = (val) => {
+  if (!val || typeof val !== 'object') {
+    return {
+      optimizedDescription: '',
+      responsibilities: [],
+      requirements: [],
+      improvements: []
+    };
+  }
+  const optimizedDescription = String(val.optimizedDescription || '');
+
+  const responsibilities = Array.isArray(val.responsibilities)
+    ? val.responsibilities
+    : val.responsibilities
+      ? [val.responsibilities]
+      : [];
+
+  const requirements = Array.isArray(val.requirements)
+    ? val.requirements
+    : val.requirements
+      ? [val.requirements]
+      : [];
+
+  const improvements = Array.isArray(val.improvements)
+    ? val.improvements
+    : val.improvements
+      ? [val.improvements]
+      : [];
+
+  return {
+    optimizedDescription,
+    responsibilities: responsibilities.map(String),
+    requirements: requirements.map(String),
+    improvements: improvements.map(String)
+  };
+};
+
+const normalizeEmail = (val, fallback) => {
+  if (!val || typeof val !== 'object') {
+    return fallback;
+  }
+
+  // If parseLLM returned { raw: text } because JSON parse failed,
+  // try to extract subject/body from the raw text one more time.
+  let resolved = val;
+  if (!val.subject && !val.body && typeof val.raw === 'string') {
+    const cleaned = val.raw
+      .replace(/^```(?:json)?\s*\n?/i, '')
+      .replace(/\n?```\s*$/i, '')
+      .trim();
+    try {
+      const parsed = JSON.parse(cleaned);
+      if (parsed && typeof parsed === 'object') resolved = parsed;
+    } catch {
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[0]);
+          if (parsed && typeof parsed === 'object') resolved = parsed;
+        } catch {}
+      }
+    }
+  }
+
+  return {
+    subject: String(resolved.subject || fallback?.subject || ''),
+    body: String(resolved.body || fallback?.body || '')
+  };
+};
+
+
 const tokenize = (text) =>
   new Set(
     normalize(text)
@@ -511,10 +582,12 @@ ${draft}`,
       format: 'json'
     });
 
+    const normalizedOutput = normalizeOptimizedJd(llm.value);
+
     const payload = {
       success: true,
       original: draft,
-      optimized: llm.value,
+      optimized: normalizedOutput,
       aiMeta: llm.ok
         ? { provider: llm.provider || 'llm', ok: true }
         : { provider: 'llm', ok: false, error: llm.error }
@@ -610,15 +683,24 @@ Extra notes from recruiter: ${notes || 'none'}`,
       format: 'json'
     });
 
+    console.log('[email-gen] llm.ok=%s value=%s', llm.ok, JSON.stringify(llm.value)?.slice(0, 300));
+
+    const normalizedEmail = normalizeEmail(llm.value, {
+      subject: `${jobTitle} — update from ${companyName || 'the hiring team'}`,
+      body: `Hi ${candidateName},\n\nAI-generated content is currently unavailable. Please try again shortly.\n\nBest regards,\n${recruiterName || 'The hiring team'}`
+    });
+
     const payload = {
       success: true,
       type: t,
-      email: llm.value,
+      email: normalizedEmail,
       aiMeta: llm.ok
         ? { provider: llm.provider || 'llm', ok: true }
         : { provider: 'llm', ok: false, error: llm.error }
     };
-    if (llm.ok) await redisService.setJson(cacheKey, payload, TTL);
+    // Only cache if we got real AI content (not fallback text)
+    const isFallback = normalizedEmail.body.includes('AI-generated content is currently unavailable');
+    if (llm.ok && !isFallback) await redisService.setJson(cacheKey, payload, TTL);
     res.json(payload);
   } catch (err) {
     console.log('generateEmail error:', err?.message || err);

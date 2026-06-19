@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
   Mic,
@@ -7,6 +8,7 @@ import {
   Loader2,
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   RotateCcw,
   Trophy,
   AlertTriangle,
@@ -237,6 +239,12 @@ export default function MockInterviewPage() {
   if (finalResult) {
     return (
       <div className="container max-w-3xl py-8">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+        >
+          <ChevronLeft className="h-4 w-4" /> Back to dashboard
+        </Link>
         <ResultDashboard
           result={finalResult}
           role={role}
@@ -252,6 +260,12 @@ export default function MockInterviewPage() {
   if (!interviewStarted) {
     return (
       <div className="container max-w-2xl py-10">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+        >
+          <ChevronLeft className="h-4 w-4" /> Back to dashboard
+        </Link>
         <header className="mb-8 text-center">
           <h1 className="flex items-center justify-center gap-2 text-3xl font-bold tracking-tight">
             <Mic className="h-7 w-7 text-accent" /> Voice mock interview
@@ -319,6 +333,12 @@ export default function MockInterviewPage() {
 
   return (
     <div className="container max-w-3xl py-8">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
+        <ChevronLeft className="h-4 w-4" /> Back to dashboard
+      </Link>
       {/* Top bar */}
       <header className="mb-4 flex items-center justify-between gap-3">
         <div>

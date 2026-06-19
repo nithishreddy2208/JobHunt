@@ -1,7 +1,10 @@
 import { api } from './client';
 
 export const applicationApi = {
-  apply: (jobId) => api.post(`/application/apply/${jobId}`).then((r) => r.data),
+  // `screening` is the optional pre-screening profile from the AI Application
+  // Assistant. Omitted for legacy/direct applies.
+  apply: (jobId, screening) =>
+    api.post(`/application/apply/${jobId}`, screening ? { screening } : {}).then((r) => r.data),
   mine: (params) => api.get('/application/get', { params }).then((r) => r.data),
   applicants: (jobId, params) =>
     api.get(`/application/${jobId}/applicants`, { params }).then((r) => r.data),

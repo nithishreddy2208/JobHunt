@@ -5,10 +5,16 @@ import { cosineSimilarity } from '../utils/cosine.js';
 
 
 const safeJsonParse = (text) => {
+  if (!text || typeof text !== 'string') return null;
+
+  // Strip markdown code fences (```json ... ``` or ``` ... ```)
+  let cleaned = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
   try {
-    return JSON.parse(text);
+    return JSON.parse(cleaned);
   } catch {
-    const match = text.match(/\{[\s\S]*\}/);
+    // Try extracting the first JSON object from the text
+    const match = cleaned.match(/\{[\s\S]*\}/);
     if (match) {
       try {
         return JSON.parse(match[0]);

@@ -14,7 +14,8 @@ import {
   AlertTriangle,
   TrendingUp,
   ArrowRight,
-  Compass
+  Compass,
+  ChevronLeft
 } from 'lucide-react';
 import { aiApi } from '@/api/ai.api';
 import { Card, CardContent } from '@/components/ui/card';
@@ -76,6 +77,13 @@ export default function RecommendationsPage() {
 
   return (
     <div className="container max-w-6xl space-y-6 py-8">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-1"
+      >
+        <ChevronLeft className="h-4 w-4" /> Back to dashboard
+      </Link>
+
       {/* Hero */}
       <header className="relative overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-br from-accent/10 via-fuchsia-500/5 to-sky-500/10 p-6 shadow-sm">
         <div aria-hidden className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-accent/15 blur-3xl" />

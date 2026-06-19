@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Sparkles, Search, Loader2 } from 'lucide-react';
+import { Sparkles, Search, Loader2, ChevronLeft } from 'lucide-react';
 import { aiApi } from '@/api/ai.api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,6 +28,13 @@ export default function SemanticSearchPage() {
 
   return (
     <div className="container max-w-5xl py-8">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
+        <ChevronLeft className="h-4 w-4" /> Back to dashboard
+      </Link>
+
       <header className="mb-6">
         <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight">
           <Sparkles className="h-7 w-7 text-accent" /> Semantic search

@@ -1,7 +1,64 @@
 import { Application } from "../models/application.model.js";
 import { Job } from "../models/job.model.js";
+import { User } from "../models/user.model.js";
 import { ReadModels } from "../db/index.js";
 import { streamResumePdf } from "./user.controller.js";
+import { scoreScreening } from "../services/screening.service.js";
+
+// Whitelist + coerce the screening payload from the client so we never persist
+// arbitrary fields. All fields are optional; missing ones fall back to defaults.
+const sanitizeScreening = (raw) => {
+    if (!raw || typeof raw !== 'object') return null;
+    const str = (v) => (v === undefined || v === null ? '' : String(v).slice(0, 2000));
+    const arr = (v) =>
+        Array.isArray(v)
+            ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, 40)
+            : str(v).split(',').map((x) => x.trim()).filter(Boolean).slice(0, 40);
+    const bool = (v) => (v === true || v === 'yes' || v === 'Yes' || v === 'true' ? true : v === false || v === 'no' || v === 'No' || v === 'false' ? false : null);
+
+    const candidateType = raw.candidateType === 'fresher' || raw.candidateType === 'experienced'
+        ? raw.candidateType
+        : null;
+
+    const answers = Array.isArray(raw.answers)
+        ? raw.answers
+              .filter((a) => a && (a.question || a.answer))
+              .map((a) => ({ question: str(a.question), answer: str(a.answer) }))
+              .slice(0, 40)
+        : [];
+
+    return {
+        candidateType,
+        experienceYears: str(raw.experienceYears),
+        relevantExperience: str(raw.relevantExperience),
+        currentCompany: str(raw.currentCompany),
+        currentCTC: str(raw.currentCTC),
+        expectedCTC: str(raw.expectedCTC),
+        noticePeriod: str(raw.noticePeriod),
+        currentLocation: str(raw.currentLocation),
+        teamSize: str(raw.teamSize),
+        largestProject: str(raw.largestProject),
+        workAuthorization: str(raw.workAuthorization),
+        reasonForChange: str(raw.reasonForChange),
+        secondarySkills: arr(raw.secondarySkills),
+        graduationYear: str(raw.graduationYear),
+        college: str(raw.college),
+        degree: str(raw.degree),
+        cgpa: str(raw.cgpa),
+        internshipExperience: str(raw.internshipExperience),
+        preferredStack: str(raw.preferredStack),
+        skills: arr(raw.skills),
+        preferredLocation: str(raw.preferredLocation),
+        relocation: bool(raw.relocation),
+        expectedSalary: str(raw.expectedSalary),
+        experienceSummary: str(raw.experienceSummary),
+        portfolio: str(raw.portfolio),
+        github: str(raw.github),
+        linkedin: str(raw.linkedin),
+        whyHire: str(raw.whyHire),
+        answers
+    };
+};
 
 export const applyJob = async (req, res) => {
     try {
@@ -10,6 +67,17 @@ export const applyJob = async (req, res) => {
         if (!jobId) {
             return res.status(400).json({
                 message: "Job Id is required",
+                success: false
+            });
+        }
+
+        // Resume is mandatory before applying. Authoritative server-side check so
+        // applications can't be submitted even if the frontend gate is bypassed.
+        const applicant = await User.findById(jobSeekerId).select('profile.resume').lean();
+        if (!applicant?.profile?.resume) {
+            return res.status(400).json({
+                message: "Please upload your resume before applying for jobs.",
+                code: "RESUME_REQUIRED",
                 success: false
             });
         }
@@ -30,9 +98,21 @@ export const applyJob = async (req, res) => {
             });
         }
 
+        // Pre-screening answers (from the AI Application Assistant). Optional —
+        // legacy/direct applies still work. Scoring is fully graceful: if AI is
+        // down we persist a deterministic heuristic score and never block apply.
+        let screening = sanitizeScreening(req.body?.screening);
+        if (screening && screening.candidateType) {
+            const { aiMatchScore, aiMatchSummary } = await scoreScreening(job, screening);
+            screening.aiMatchScore = aiMatchScore;
+            screening.aiMatchSummary = aiMatchSummary;
+            screening.completedAt = new Date();
+        }
+
         const newApplication = await Application.create({
             job: jobId,
-            applicant: jobSeekerId
+            applicant: jobSeekerId,
+            ...(screening ? { screening } : {})
         });
 
         job.applications.push(newApplication._id);

@@ -1,6 +1,7 @@
-import { Link, useParams } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Building2, MapPin, Briefcase, Wallet, Users, Loader2, MessageSquare, CheckCircle2, FileSignature } from 'lucide-react';
+import { ArrowLeft, Building2, MapPin, Briefcase, Wallet, Users, Loader2, MessageSquare, CheckCircle2, FileSignature, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
 import { jobApi } from '@/api/job.api';
 import { applicationApi } from '@/api/application.api';
@@ -9,14 +10,19 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/useAuth';
 import { formatSalary, formatDateRelative } from '@/lib/utils';
+import ApplyScreeningModal from '@/components/jobs/ApplyScreeningModal';
 
 export default function JobDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   // Show seeker-only UI for everyone except confirmed recruiters (covers null while auth probe is in flight).
   const isRecruiter = user?.role === 'recruiter';
   const showSeekerUi = !isRecruiter;
+  const hasResume = Boolean(user?.profile?.resume);
+  const [showResumeDialog, setShowResumeDialog] = useState(false);
+  const [showScreening, setShowScreening] = useState(false);
 
   const jobQuery = useQuery({
     queryKey: ['job', id],
@@ -29,7 +35,7 @@ export default function JobDetailPage() {
   const applicationsQuery = useQuery({
     queryKey: ['applications', { page: 1 }],
     queryFn: () => applicationApi.mine({ page: 1, limit: 100 }),
-    enabled: showSeekerUi,
+    enabled: isAuthenticated && showSeekerUi,
     staleTime: 60_000
   });
 
@@ -38,19 +44,35 @@ export default function JobDetailPage() {
   );
 
   const applyMutation = useMutation({
-    mutationFn: () => applicationApi.apply(id),
+    mutationFn: (screening) => applicationApi.apply(id, screening),
     onSuccess: () => {
       toast.success('Application submitted!');
+      setShowScreening(false);
       queryClient.invalidateQueries({ queryKey: ['applications'] });
       queryClient.invalidateQueries({ queryKey: ['job', id] });
     },
     onError: (err) => {
+      // Server-side resume gate (in case the client check was bypassed/stale).
+      if (err.response?.data?.code === 'RESUME_REQUIRED') {
+        setShowResumeDialog(true);
+        return;
+      }
       // 429 already handled by axios interceptor
       if (err.response?.status !== 429) {
         toast.error(err.response?.data?.message || 'Failed to apply');
       }
     }
   });
+
+  // Gate applications behind a resume upload. Open the dialog instead of applying
+  // when the seeker has no resume on file.
+  const handleApply = () => {
+    if (!hasResume) {
+      setShowResumeDialog(true);
+      return;
+    }
+    setShowScreening(true);
+  };
 
   if (jobQuery.isLoading) {
     return (
@@ -109,7 +131,7 @@ export default function JobDetailPage() {
                   variant="accent"
                   size="lg"
                   disabled={applyMutation.isPending}
-                  onClick={() => applyMutation.mutate()}
+                  onClick={handleApply}
                 >
                   {applyMutation.isPending ? (
                     <>
@@ -191,6 +213,48 @@ export default function JobDetailPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      <ApplyScreeningModal
+        open={showScreening}
+        onClose={() => setShowScreening(false)}
+        jobTitle={job.title}
+        isSubmitting={applyMutation.isPending}
+        onSubmit={(screening) => applyMutation.mutate(screening)}
+      />
+
+      {showResumeDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowResumeDialog(false)}
+        >
+          <Card className="w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <CardContent className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-500">
+                  <FileWarning className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold">Resume required</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Please upload your resume before applying for jobs. Recruiters
+                    need it to review your application.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end gap-2">
+                <Button variant="ghost" onClick={() => setShowResumeDialog(false)}>
+                  Cancel
+                </Button>
+                <Button variant="accent" onClick={() => navigate('/profile')}>
+                  Upload resume
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );

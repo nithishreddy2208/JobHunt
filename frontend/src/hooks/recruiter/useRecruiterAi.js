@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { recruiterAiApi } from '@/api/recruiterAi.api';
+import { useAuth } from '@/hooks/useAuth';
 
 export const recruiterAiKeys = {
   matchScores: (jobId) => ['recruiter', 'ai', 'match', jobId],
@@ -9,29 +10,35 @@ export const recruiterAiKeys = {
   summary: (applicationId) => ['recruiter', 'ai', 'summary', applicationId]
 };
 
-export const useMatchScores = (jobId) =>
-  useQuery({
+export const useMatchScores = (jobId) => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterAiKeys.matchScores(jobId),
     queryFn: () => recruiterAiApi.matchScores(jobId),
-    enabled: !!jobId,
+    enabled: isAuthenticated && !!jobId,
     staleTime: 60_000
   });
+};
 
-export const useShortlist = (jobId, top = 5, enabled = false) =>
-  useQuery({
+export const useShortlist = (jobId, top = 5, enabled = false) => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterAiKeys.shortlist(jobId, top),
     queryFn: () => recruiterAiApi.shortlist(jobId, top),
-    enabled: !!jobId && enabled,
+    enabled: isAuthenticated && !!jobId && enabled,
     staleTime: 30_000
   });
+};
 
-export const useAnalytics = (jobId) =>
-  useQuery({
+export const useAnalytics = (jobId) => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterAiKeys.analytics(jobId),
     queryFn: () => recruiterAiApi.analytics(jobId),
-    enabled: !!jobId,
+    enabled: isAuthenticated && !!jobId,
     staleTime: 60_000
   });
+};
 
 export const useCandidateSummary = () =>
   useMutation({

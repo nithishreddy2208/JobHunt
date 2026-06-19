@@ -4,6 +4,7 @@ import { jobApi } from '@/api/job.api';
 import { applicationApi } from '@/api/application.api';
 import { companyApi } from '@/api/company.api';
 import { userApi } from '@/api/user.api';
+import { useAuth } from '@/hooks/useAuth';
 
 // ─── Keys (centralized so invalidations stay consistent) ─────────────────────
 export const recruiterKeys = {
@@ -19,8 +20,9 @@ export const recruiterKeys = {
  * Returns { jobs, success } | { success:false } on 404 (no jobs yet).
  * The hook normalises both shapes so callers always get an array.
  */
-export const useMyJobs = () =>
-  useQuery({
+export const useMyJobs = () => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterKeys.myJobs,
     queryFn: async () => {
       try {
@@ -32,8 +34,10 @@ export const useMyJobs = () =>
         throw err;
       }
     },
+    enabled: isAuthenticated,
     staleTime: 30_000
   });
+};
 
 export const useCreateJob = () => {
   const qc = useQueryClient();
@@ -50,14 +54,16 @@ export const useCreateJob = () => {
 };
 
 // ─── Applicants ─────────────────────────────────────────────────────────────
-export const useApplicants = (jobId, page = 1, limit = 20) =>
-  useQuery({
+export const useApplicants = (jobId, page = 1, limit = 20) => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterKeys.applicants(jobId, page),
     queryFn: () => applicationApi.applicants(jobId, { page, limit }),
-    enabled: !!jobId,
+    enabled: isAuthenticated && !!jobId,
     keepPreviousData: true,
     staleTime: 10_000
   });
+};
 
 export const useUpdateApplicationStatus = (jobId) => {
   const qc = useQueryClient();
@@ -76,8 +82,9 @@ export const useUpdateApplicationStatus = (jobId) => {
 };
 
 // ─── Companies ──────────────────────────────────────────────────────────────
-export const useCompanies = () =>
-  useQuery({
+export const useCompanies = () => {
+  const { isAuthenticated } = useAuth();
+  return useQuery({
     queryKey: recruiterKeys.companies,
     queryFn: async () => {
       try {
@@ -88,8 +95,10 @@ export const useCompanies = () =>
         throw err;
       }
     },
+    enabled: isAuthenticated,
     staleTime: 60_000
   });
+};
 
 export const useCreateCompany = () => {
   const qc = useQueryClient();

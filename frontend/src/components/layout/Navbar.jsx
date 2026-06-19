@@ -25,6 +25,12 @@ const recruiterLinks = [
   { to: '/admin/profile', label: 'Profile' }
 ];
 
+const guestLinks = [
+  { to: '/#features', label: 'Features' },
+  { to: '/#recruiters', label: 'For Recruiters' },
+  { to: '/#about', label: 'About' }
+];
+
 const initialsOf = (name = '') =>
   name
     .split(' ')
@@ -36,7 +42,7 @@ const initialsOf = (name = '') =>
 export const Navbar = () => {
   const { user, isAuthenticated, isPro, logout } = useAuth();
   const isRecruiter = user?.role === 'recruiter';
-  const links = isAuthenticated ? (isRecruiter ? recruiterLinks : seekerLinks) : [];
+  const links = isAuthenticated ? (isRecruiter ? recruiterLinks : seekerLinks) : guestLinks;
   const photo = user?.profile?.photo;
   const profileHref = isRecruiter ? '/admin/profile' : '/profile';
 
@@ -48,7 +54,7 @@ export const Navbar = () => {
           <span>JobHunt</span>
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-2 md:flex">
           <NavLink to="/" className={navItem} end>
             {isAuthenticated ? 'Dashboard' : 'Home'}
           </NavLink>

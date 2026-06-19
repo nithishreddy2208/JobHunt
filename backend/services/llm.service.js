@@ -148,7 +148,7 @@ export class LlmService {
     if (process.env.OPEN_ROUTER_API_KEY) {
       const orStart = Date.now();
       try {
-        const res = await openRouterService.generateJson({ system: '', user: p });
+        const res = await openRouterService.generateJson({ system: '', user: p, format });
         if (!res?.ok) throw new Error(res?.data?.error || res?.data?.message || 'OpenRouter request failed');
         const text = res?.data?.text || '';
         if (!text) throw new Error('OpenRouter returned empty response');
